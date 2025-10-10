@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# monitor.sh -- Phase 3 Complete System Monitor
+# monitor.sh -- Complete System Monitor
 # Complete framework integration: unified logging + standardized formatting + enhanced UX
 
 set -euo pipefail
@@ -8,7 +8,7 @@ export DEBUG="${DEBUG:-false}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 
 # ==============================================================================
-# COMPLETE FRAMEWORK INTEGRATION (PHASE 3)
+# COMPLETE FRAMEWORK INTEGRATION
 # ==============================================================================
 
 # Load core framework with comprehensive error handling
@@ -17,7 +17,7 @@ source "$SCRIPT_DIR/lib/common.sh" || {
     exit 1
 }
 
-# Track complete framework loading for Phase 3
+# Track complete framework loading
 COMPLETE_FRAMEWORK_COMPONENTS=()
 
 # Load all framework components with complete integration
@@ -35,7 +35,7 @@ if source "$SCRIPT_DIR/lib/dashboard-metrics.sh"; then
     COMPLETE_FRAMEWORK_COMPONENTS+=("dashboard-metrics")
 fi
 
-# Phase 3: Complete logging framework override
+# Complete logging framework override
 if source "$SCRIPT_DIR/lib/logger.sh"; then
     logger_init
     COMPLETE_FRAMEWORK_COMPONENTS+=("logger")
@@ -50,7 +50,7 @@ if source "$SCRIPT_DIR/lib/logger.sh"; then
 
     echo -e "${GREEN}✅ Complete logging framework integrated${NC}"
 else
-    # Enhanced fallback logging for Phase 3 compatibility
+    # Enhanced fallback logging for compatibility
     log_warning "Enhanced logging framework not available - using enhanced fallback"
 
     # Enhanced fallback with better formatting
@@ -71,24 +71,24 @@ else
     log_debug() { [[ "${DEBUG:-false}" == "true" ]] && echo -e "${PURPLE}[DEBUG]${NC} $*"; }
 fi
 
-# Phase 3: Complete error handling integration
+# Complete error handling integration
 if source "$SCRIPT_DIR/lib/error-handler.sh"; then
     error_handler_init
     COMPLETE_FRAMEWORK_COMPONENTS+=("error-handler")
 fi
 
-# Phase 3: Complete output formatting integration
+# Complete output formatting integration
 if source "$SCRIPT_DIR/lib/perf-formatter.sh"; then
     perf_formatter_init
     COMPLETE_FRAMEWORK_COMPONENTS+=("perf-formatter")
     log_info "Complete output formatting framework loaded"
 fi
 
-# Load Docker utilities with Phase 3 enhancements
+# Load Docker utilities with enhancements
 source "$SCRIPT_DIR/lib/docker.sh" || {
     log_warning "Docker utilities not found - using enhanced fallback functions"
 
-    # Enhanced fallback Docker functions (Phase 3)
+    # Enhanced fallback Docker functions
     is_service_running() {
         if [[ " ${COMPLETE_FRAMEWORK_COMPONENTS[*]} " =~ " error-handler " ]]; then
             error_handler_safe_execute "docker_ps_check" docker ps --filter "name=$1" --filter "status=running" | grep -q "$1"
@@ -124,7 +124,7 @@ source "$SCRIPT_DIR/lib/docker.sh" || {
     }
 }
 
-# Load complete configuration suite (Phase 3)
+# Load complete configuration suite
 [[ -f "$SCRIPT_DIR/config/performance-targets.conf" ]] && source "$SCRIPT_DIR/config/performance-targets.conf"
 [[ -f "$SCRIPT_DIR/config/monitoring-intervals.conf" ]] && source "$SCRIPT_DIR/config/monitoring-intervals.conf"
 [[ -f "$SCRIPT_DIR/config/alert-thresholds.conf" ]] && source "$SCRIPT_DIR/config/alert-thresholds.conf"
@@ -145,7 +145,7 @@ DASHBOARD_WATCH_INTERVAL=${DASHBOARD_WATCH_INTERVAL:-30}
 CONTAINER_LOG_TAIL_LINES=${CONTAINER_LOG_TAIL_LINES:-20}
 
 # ==============================================================================
-# PHASE 3: COMPLETE SERVICE MONITORING WITH FORMATTING
+# COMPLETE SERVICE MONITORING WITH FORMATTING
 # ==============================================================================
 show_service_status() {
     # Use complete framework formatting for section headers
@@ -258,7 +258,7 @@ show_service_status() {
 }
 
 # ==============================================================================
-# PHASE 3: COMPLETE RESOURCE MONITORING WITH FORMATTING
+# COMPLETE RESOURCE MONITORING WITH FORMATTING
 # ==============================================================================
 show_resource_usage() {
     # Use complete framework formatting for headers
@@ -326,7 +326,7 @@ show_resource_usage() {
             fi
         fi
 
-        # Enhanced load analysis for single CPU (Phase 3 complete integration)
+        # Enhanced load analysis for single CPU
         echo ""
         if [[ " ${COMPLETE_FRAMEWORK_COMPONENTS[*]} " =~ " perf-formatter " ]]; then
             perf_formatter_load_analysis_detailed_1cpu "$load_1m" "$LOAD_WARNING_THRESHOLD" "$LOAD_CRITICAL_THRESHOLD"
@@ -355,7 +355,7 @@ show_resource_usage() {
     echo ""
 }
 
-# Enhanced resource metrics fallback (Phase 3)
+# Enhanced resource metrics fallback 
 get_resource_metrics_enhanced_fallback() {
     log_debug "Using enhanced fallback resource metrics collection"
 
@@ -398,7 +398,7 @@ EOF
 }
 
 # ==============================================================================
-# PHASE 3: COMPLETE SQLITE MONITORING WITH FORMATTING
+# COMPLETE SQLITE MONITORING WITH FORMATTING
 # ==============================================================================
 show_sqlite_performance() {
     # Use complete framework formatting for section headers
@@ -509,7 +509,7 @@ show_sqlite_performance() {
     echo ""
 }
 
-# Enhanced fallback SQLite performance (Phase 3)
+# Enhanced fallback SQLite performance
 show_sqlite_performance_enhanced_fallback() {
     if [[ -f "./data/bw/data/bwdata/db.sqlite3" ]]; then
         local db_size query_time
@@ -589,7 +589,7 @@ show_sqlite_performance_enhanced_fallback() {
 }
 
 # ==============================================================================
-# PHASE 3: COMPLETE DASHBOARD WITH COMPREHENSIVE FORMATTING
+#  COMPLETE DASHBOARD WITH COMPREHENSIVE FORMATTING
 # ==============================================================================
 show_dashboard() {
     clear
@@ -632,7 +632,7 @@ show_dashboard() {
 }
 
 # ==============================================================================
-# PHASE 3: ENHANCED SECURITY AND BACKUP STATUS
+#  ENHANCED SECURITY AND BACKUP STATUS
 # ==============================================================================
 
 # Enhanced security status with complete framework integration
@@ -822,7 +822,7 @@ show_backup_status_complete() {
 }
 
 # ==============================================================================
-# PHASE 3: COMPLETE INTERACTIVE MENU WITH FORMATTING
+# COMPLETE INTERACTIVE MENU WITH FORMATTING
 # ==============================================================================
 show_interactive_menu() {
     while true; do
@@ -1001,7 +1001,7 @@ show_complete_framework_status() {
         echo -e "${BOLD}=== COMPLETE FRAMEWORK COMPONENT STATUS ===${NC}"
         echo ""
 
-        echo "Phase 3 Complete Framework Integration Status:"
+        echo "Complete Framework Integration Status:"
         echo "Active components: ${#COMPLETE_FRAMEWORK_COMPONENTS[@]}/6"
         echo ""
 
@@ -1047,7 +1047,7 @@ watch_dashboard() {
 }
 
 # ==============================================================================
-# PHASE 3: MAIN FUNCTION WITH COMPLETE INTEGRATION
+#  MAIN FUNCTION WITH COMPLETE INTEGRATION
 # ==============================================================================
 main() {
     local command="${1:-dashboard}"
@@ -1132,7 +1132,7 @@ Commands:
     backup             Show backup status with complete framework integration
     framework          Show complete framework component status
 
-🆕 Complete Framework Integration (Phase 3):
+🆕 Complete Framework Integration:
     ✅ lib/perf-collector.sh: Unified metrics with intelligent caching
     ✅ lib/dashboard-sqlite.sh: Comprehensive SQLite monitoring and analysis
     ✅ lib/dashboard-metrics.sh: Complete container management integration
