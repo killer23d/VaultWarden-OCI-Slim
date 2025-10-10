@@ -7,9 +7,11 @@ set -euo pipefail
 export DEBUG="${DEBUG:-false}"
 export LOG_FILE="/tmp/vaultwarden_startup_$(date +%Y%m%d_%H%M%S).log"
 
-# PHASE 2 FIX: Standardized paths - consistent SQLite database path throughout
+# Standardized paths - consistent throughout all scripts
 readonly SQLITE_DB_PATH="./data/bwdata/db.sqlite3"
+readonly SQLITE_DB_CONTAINER_PATH="/data/bwdata/db.sqlite3"
 readonly VAULTWARDEN_DATA_DIR="./data/bwdata"
+readonly VAULTWARDEN_DATA_CONTAINER_DIR="/data/bwdata"
 
 # Source library modules with robust error handling
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
@@ -48,7 +50,7 @@ source "$SCRIPT_DIR/lib/config.sh" || {
 }
 
 # ================================
-# PHASE 2 FIX: DIRECTORY STRUCTURE CREATION
+# DIRECTORY STRUCTURE CREATION
 # ================================
 
 # Create all required directories with proper permissions
@@ -57,27 +59,27 @@ create_directory_structure() {
 
     # Core data directories
     local directories=(
-        "./data/bwdata"           # VaultWarden data (SQLite database)
-        "./data/caddy_data"       # Caddy data storage
-        "./data/caddy_config"     # Caddy configuration
-        "./data/caddy_logs"       # Caddy access logs
-        "./data/backups"          # Local backup storage
-        "./data/backup_logs"      # Backup operation logs
-        "./data/fail2ban"         # Fail2ban configuration data
+        "$VAULTWARDEN_DATA_DIR"     # VaultWarden data (SQLite database)
+        "./data/caddy_data"         # Caddy data storage
+        "./data/caddy_config"       # Caddy configuration
+        "./data/caddy_logs"         # Caddy access logs
+        "./data/backups"            # Local backup storage
+        "./data/backup_logs"        # Backup operation logs
+        "./data/fail2ban"           # Fail2ban configuration data
 
         # Configuration directories
-        "./backup/config"         # rclone configuration
-        "./backup/templates"      # Backup templates
-        "./fail2ban/jail.d"       # Fail2ban jail configurations
-        "./fail2ban/filter.d"     # Fail2ban filter configurations
-        "./fail2ban/action.d"     # Fail2ban action configurations
-        "./ddclient"              # DDClient configuration
-        "./caddy"                 # Caddy configuration files
+        "./backup/config"           # rclone configuration
+        "./backup/templates"        # Backup templates
+        "./fail2ban/jail.d"         # Fail2ban jail configurations
+        "./fail2ban/filter.d"       # Fail2ban filter configurations
+        "./fail2ban/action.d"       # Fail2ban action configurations
+        "./ddclient"                # DDClient configuration
+        "./caddy"                   # Caddy configuration files
 
         # Log directories
-        "./logs"                  # General log directory
-        "./logs/startup"          # Startup script logs
-        "./logs/maintenance"      # Maintenance script logs
+        "./logs"                    # General log directory
+        "./logs/startup"            # Startup script logs
+        "./logs/maintenance"        # Maintenance script logs
     )
 
     for dir in "${directories[@]}"; do
@@ -114,7 +116,7 @@ validate_directory_structure() {
     log_info "Validating directory structure..."
 
     local critical_dirs=(
-        "./data/bwdata"
+        "$VAULTWARDEN_DATA_DIR"
         "./data/caddy_logs"
         "./backup/config"
         "./fail2ban/jail.d"
@@ -201,7 +203,7 @@ determine_active_profiles() {
     fi
 }
 
-# PHASE 2 FIX: Enhanced backup configuration with standardized paths
+# Enhanced backup configuration with standardized paths
 prepare_backup_config() {
     local config_dir="${RCLONE_CONFIG_DIR:-./backup/config}"
     local config_file="$config_dir/rclone.conf"
@@ -261,14 +263,11 @@ EOF
         log_info "Backup remote configured: ${BACKUP_REMOTE}"
     fi
 
-    # PHASE 2 FIX: Validate backup paths consistency
-    local sqlite_path="$SQLITE_DB_PATH"
-    local container_db_path="/data/bwdata/db.sqlite3"
+    # Validate backup paths consistency
+    log_info "SQLite database path (host): $SQLITE_DB_PATH"
+    log_info "SQLite database path (container): $SQLITE_DB_CONTAINER_PATH"
 
-    log_info "SQLite database path (host): $sqlite_path"
-    log_info "SQLite database path (container): $container_db_path"
-
-    if [[ ! -f "$sqlite_path" ]]; then
+    if [[ ! -f "$SQLITE_DB_PATH" ]]; then
         log_info "SQLite database will be created on first VaultWarden startup"
     fi
 }
@@ -277,11 +276,11 @@ EOF
 # ENHANCED MAIN FUNCTIONS
 # ================================
 
-# PHASE 2 FIX: Enhanced initialization with directory creation
+# Enhanced initialization with directory creation
 initialize() {
     log_info "Initializing VaultWarden-OCI startup..."
 
-    # PHASE 2: Create directory structure first
+    # Create directory structure first
     create_directory_structure
     validate_directory_structure
 
@@ -512,8 +511,7 @@ Options:
     --help, -h          Show this help message
 
 Environment Variables:
-    OCI_SECRET_OCID     Use OCI Vault for configuration (preferred)
-    OCISECRET_OCID      Back-compatibility alias for OCI_SECRET_OCID
+    OCI_SECRET_OCID     Use OCI Vault for configuration
     DEBUG               Enable debug logging
     LOG_FILE            Custom log file path
 
@@ -537,11 +535,12 @@ Profile Information:
     dns         - ddclient dynamic DNS updates
     maintenance - watchtower updates
 
-PHASE 2 Enhancements:
+Enhancements:
     ✓ Automated directory structure creation
     ✓ Standardized SQLite database paths
     ✓ Enhanced backup configuration validation
     ✓ Improved error handling and fallbacks
+    ✓ Consistent variable naming
 
 EOF
                 exit 0
@@ -553,7 +552,7 @@ EOF
     done
 
     # Main execution flow
-    log_info "🚀 Starting VaultWarden-OCI enhanced deployment (Phase 2)..."
+    log_info "🚀 Starting VaultWarden-OCI enhanced deployment..."
 
     # Override profiles if forced
     if [[ -n "${FORCE_PROFILES:-}" ]]; then
