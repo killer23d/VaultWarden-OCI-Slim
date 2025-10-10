@@ -27,7 +27,7 @@ validate_environment() {
     if [[ ! -d "$lib_dir" ]]; then
         echo "❌ FATAL: Required lib/ directory not found at: $lib_dir" >&2
         echo "📋 This suggests an incomplete installation." >&2
-        echo "🔧 Solution: Run './init-setup.sh' or re-clone the repository" >&2
+        echo "🔧 Solution: Run 'tools/init-setup.sh' or re-clone the repository" >&2
         exit 1
     fi
 
@@ -44,7 +44,7 @@ validate_environment() {
     if [[ ${#missing_libs[@]} -gt 0 ]]; then
         echo "❌ FATAL: Required libraries missing from $lib_dir:" >&2
         printf '   - %s\n' "${missing_libs[@]}" >&2
-        echo "🔧 Solution: Restore missing files or run './init-setup.sh'" >&2
+        echo "🔧 Solution: Restore missing files or run 'tools/init-setup.sh'" >&2
         exit 1
     fi
 }
@@ -56,19 +56,19 @@ load_libraries() {
     # FAIL FAST: No fallbacks, require proper installation
     source "$script_dir/lib/common.sh" || {
         echo "❌ FATAL: Required library lib/common.sh not found" >&2
-        echo "🔧 Solution: Run './init-setup.sh' or restore missing files" >&2
+        echo "🔧 Solution: Run 'tools/init-setup.sh' or restore missing files" >&2
         exit 1
     }
 
     source "$script_dir/lib/config.sh" || {
         echo "❌ FATAL: Required library lib/config.sh not found" >&2
-        echo "🔧 Solution: Run './init-setup.sh' or restore missing files" >&2
+        echo "🔧 Solution: Run 'tools/init-setup.sh' or restore missing files" >&2
         exit 1
     }
 
     source "$script_dir/lib/docker.sh" || {
         echo "❌ FATAL: Required library lib/docker.sh not found" >&2
-        echo "🔧 Solution: Run './init-setup.sh' or restore missing files" >&2
+        echo "🔧 Solution: Run 'tools/init-setup.sh' or restore missing files" >&2
         exit 1
     }
 }
@@ -83,7 +83,7 @@ validate_core_configuration() {
 
     local errors=()
 
-    # Required core variables - UPDATED for domain consolidation
+    # Required core variables - CORRECTED for domain consolidation
     local required_vars=(
         "VAULTWARDEN_DOMAIN:Domain configuration"
         "ADMIN_TOKEN:VaultWarden admin token"
