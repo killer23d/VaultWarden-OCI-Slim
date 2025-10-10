@@ -14,7 +14,7 @@ services:
     networks:
       - bw_net
     healthcheck:
-      # Fixed: Support both curl and wget for different VaultWarden images
+      # Enhanced: Support both curl and wget for different VaultWarden images
       test: ["CMD-SHELL", "(command -v curl >/dev/null 2>&1 && curl -fsS http://127.0.0.1:80/alive) || (command -v wget >/dev/null 2>&1 && wget -qO- http://127.0.0.1:80/alive) || exit 1"]
       interval: 5m
       timeout: 15s
@@ -24,17 +24,39 @@ services:
       resources:
         limits:
           memory: 256M
-          cpus: '0.35'  # Reduced from 0.4 to fit within 1.0 CPU total
+          cpus: '0.35'  # Optimized for 1.0 CPU total
         reservations:
           memory: 128M
-          cpus: '0.175'  # Adjusted proportionally
+          cpus: '0.175'
     environment:
-      # Fixed: Use environment variables instead of hardcoded values
+      # Standardized: Use consistent environment variables
       - DATABASE_URL=${DATABASE_URL:-sqlite:////data/bwdata/db.sqlite3}
       - ROCKET_WORKERS=${ROCKET_WORKERS:-1}
       - WEBSOCKET_ENABLED=${WEBSOCKET_ENABLED:-false}
       - EXTENDED_LOGGING=${EXTENDED_LOGGING:-true}
       - LOG_LEVEL=${LOG_LEVEL:-warn}
+      # Additional VaultWarden configuration
+      - ADMIN_TOKEN=${ADMIN_TOKEN:-}
+      - SIGNUPS_ALLOWED=${SIGNUPS_ALLOWED:-false}
+      - INVITES_ALLOWED=${INVITES_ALLOWED:-true}
+      - WEB_VAULT_ENABLED=${WEB_VAULT_ENABLED:-true}
+      - SHOW_PASSWORD_HINTS=${SHOW_PASSWORD_HINTS:-false}
+      - DISABLE_2FA_REMEMBER=${DISABLE_2FA_REMEMBER:-false}
+      # SMTP Configuration
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+      - SMTP_FROM_NAME=${SMTP_FROM_NAME:-}
+      - SMTP_USERNAME=${SMTP_USERNAME:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_SECURITY=${SMTP_SECURITY:-starttls}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      # Push Notifications
+      - PUSH_ENABLED=${PUSH_ENABLED:-true}
+      - PUSH_INSTALLATION_ID=${PUSH_INSTALLATION_ID:-}
+      - PUSH_INSTALLATION_KEY=${PUSH_INSTALLATION_KEY:-}
+      - PUSH_RELAY_URI=${PUSH_RELAY_URI:-https://push.bitwarden.com}
+      # Domain Configuration
+      - DOMAIN=${DOMAIN:-}
     logging:
       driver: "json-file"
       options:
@@ -54,7 +76,7 @@ services:
       - ./data/caddy_data:/data
       - ./data/caddy_config:/config
       - ./data/caddy_logs:/logs
-      - ./caddy/cloudflare_ips.caddy:/etc/caddy/cloudflare_ips.caddy:rw
+      - ./caddy/cloudflare_ips.caddy:/etc/caddy/cloudflare_ips.caddy:ro
     ports:
       - "80:80"
       - "443:443"
@@ -73,10 +95,14 @@ services:
       resources:
         limits:
           memory: 128M
-          cpus: '0.12'  # Reduced from 0.15 to fit within 1.0 CPU total
+          cpus: '0.12'  # Optimized for 1.0 CPU total
         reservations:
           memory: 64M
-          cpus: '0.06'   # Adjusted proportionally
+          cpus: '0.06'
+    environment:
+      # Caddy-specific environment variables
+      - CADDY_ADMIN=${CADDY_ADMIN:-off}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-}
     logging:
       driver: "json-file"
       options:
@@ -97,13 +123,14 @@ services:
       - ./data/caddy_logs:/logs/caddy:ro
       - ./data/bwdata:/logs/vaultwarden:ro
       - ./data/fail2ban:/config:rw
-      - ./data/caddy_logs:/logs:ro
     cap_add:
       - NET_ADMIN
     environment:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
       - VERBOSITY=-vv
+      # Fail2ban configuration from environment
+      - TZ=${TZ:-UTC}
     healthcheck:
       test: ["CMD-SHELL", "fail2ban-client ping >/dev/null 2>&1 || exit 1"]
       interval: 15m
@@ -119,10 +146,10 @@ services:
       resources:
         limits:
           memory: 64M
-          cpus: '0.08'   # Kept same
+          cpus: '0.08'
         reservations:
           memory: 32M
-          cpus: '0.04'   # Kept same
+          cpus: '0.04'
     logging:
       driver: "json-file"
       options:
@@ -151,14 +178,21 @@ services:
     environment:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
+      - TZ=${TZ:-UTC}
+      # DDClient configuration from environment
+      - DDCLIENT_PROTOCOL=${DDCLIENT_PROTOCOL:-}
+      - DDCLIENT_LOGIN=${DDCLIENT_LOGIN:-}
+      - DDCLIENT_PASSWORD=${DDCLIENT_PASSWORD:-}
+      - DDCLIENT_ZONE=${DDCLIENT_ZONE:-}
+      - DDCLIENT_HOST=${DDCLIENT_HOST:-}
     deploy:
       resources:
         limits:
           memory: 32M
-          cpus: '0.05'   # Kept same
+          cpus: '0.05'
         reservations:
           memory: 16M
-          cpus: '0.025'  # Kept same
+          cpus: '0.025'
     logging:
       driver: "json-file"
       options:
@@ -195,25 +229,36 @@ services:
       retries: 3
       start_period: 120s
     environment:
-      # Fixed: Use environment variables instead of hardcoded values
+      # Standardized: Use consistent paths and environment variables
       - BACKUP_DIR=/backups
       - LOG_DIR=/var/log/backup
       - RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-30}
-      - BACKUP_PASSPHRASE=${BACKUP_PASSPHRASE}
+      - BACKUP_PASSPHRASE=${BACKUP_PASSPHRASE:-}
       - BACKUP_REMOTE=${BACKUP_REMOTE:-}
       - BACKUP_PATH=${BACKUP_PATH:-vaultwarden-backups}
       - BACKUP_EMAIL=${BACKUP_EMAIL:-}
       - DATABASE_TYPE=sqlite
+      # Standardized paths - consistent with settings.env
       - SQLITE_DB_PATH=/data/bwdata/db.sqlite3
       - VAULTWARDEN_DATA_DIR=/data/bwdata
+      # Additional backup configuration
+      - BACKUP_SCHEDULE=${BACKUP_SCHEDULE:-0 2 * * *}
+      - BACKUP_COMPRESS=${BACKUP_COMPRESS:-true}
+      - BACKUP_ENCRYPT=${BACKUP_ENCRYPT:-true}
+      - BACKUP_VERIFICATION=${BACKUP_VERIFICATION:-true}
+      - BACKUP_NOTIFY=${BACKUP_NOTIFY:-true}
+      - BACKUP_NOTIFY_ON=${BACKUP_NOTIFY_ON:-all}
+      - RCLONE_TRANSFER_TIMEOUT=${RCLONE_TRANSFER_TIMEOUT:-30m}
+      - RCLONE_RETRIES=${RCLONE_RETRIES:-3}
+      - TZ=${TZ:-UTC}
     deploy:
       resources:
         limits:
           memory: 128M
-          cpus: '0.30'  # Reduced from 0.32 to fit within 1.0 CPU total
+          cpus: '0.30'  # Optimized for 1.0 CPU total
         reservations:
           memory: 64M
-          cpus: '0.15'   # Adjusted proportionally
+          cpus: '0.15'
     profiles:
       - backup
     logging:
@@ -237,6 +282,14 @@ services:
       - WATCHTOWER_INCLUDE_STOPPED=false
       - WATCHTOWER_REVIVE_STOPPED=false
       - WATCHTOWER_LABEL_ENABLE=true
+      # Additional watchtower configuration
+      - WATCHTOWER_NOTIFICATIONS=${WATCHTOWER_NOTIFICATIONS:-false}
+      - WATCHTOWER_NOTIFICATION_EMAIL_FROM=${SMTP_FROM:-}
+      - WATCHTOWER_NOTIFICATION_EMAIL_TO=${ALERT_EMAIL:-}
+      - WATCHTOWER_NOTIFICATION_EMAIL_SERVER=${SMTP_HOST:-}
+      - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_PORT=${SMTP_PORT:-587}
+      - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_USER=${SMTP_USERNAME:-}
+      - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_PASSWORD=${SMTP_PASSWORD:-}
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
     networks:
@@ -245,10 +298,10 @@ services:
       resources:
         limits:
           memory: 64M
-          cpus: '0.10'   # Reduced from 0.11 to fit within 1.0 CPU total
+          cpus: '0.10'  # Optimized for 1.0 CPU total
         reservations:
           memory: 32M
-          cpus: '0.05'   # Adjusted proportionally
+          cpus: '0.05'
     logging:
       driver: "json-file"
       options:
@@ -268,14 +321,14 @@ networks:
 # Optimized for 1 OCPU/6GB OCI A1 Flex
 # ==============================================
 # 
-# Resource Allocation Summary (CORRECTED):
+# Resource Allocation Summary:
 # - VaultWarden: 0.35 CPU, 256MB RAM
 # - Caddy:       0.12 CPU, 128MB RAM  
 # - Fail2ban:    0.08 CPU, 64MB RAM
 # - Backup:      0.30 CPU, 128MB RAM
 # - Watchtower:  0.10 CPU, 64MB RAM
 # - DDClient:    0.05 CPU, 32MB RAM
-# Total:         1.00 CPU, 672MB RAM (FIXED: Now exactly 1.0 CPU)
+# Total:         1.00 CPU, 672MB RAM
 #
 # Key Optimizations:
 # ✓ Removed MariaDB container (saves 0.5 CPU, 1GB RAM)
@@ -284,9 +337,10 @@ networks:
 # ✓ SQLite database (file-based, no server overhead)
 # ✓ Single worker process (ROCKET_WORKERS=1)
 # ✓ WebSocket disabled (polling mode for efficiency)
-# ✓ Weekly maintenance schedule
 # ✓ Robust healthchecks supporting different VaultWarden images
-# ✓ Environment variables used instead of hardcoded values
+# ✓ Comprehensive environment variable configuration
+# ✓ Standardized paths across all services
+# ✓ Enhanced service configuration management
 #
 # Profile Usage Examples:
 # docker compose up -d                           # Core services only
@@ -295,3 +349,14 @@ networks:
 # docker compose --profile dns up -d            # Core + ddclient
 # docker compose --profile maintenance up -d    # Core + watchtower
 # ./startup.sh                                  # Automatic profile selection
+#
+# Enhancements Applied:
+# ✓ Standardized environment variable usage across all services
+# ✓ Added comprehensive VaultWarden configuration via env vars
+# ✓ Enhanced backup service with all configuration options
+# ✓ Improved Watchtower with email notification support
+# ✓ Added DDClient environment variable configuration
+# ✓ Consistent path references for SQLite database
+# ✓ Enhanced logging configuration for all services
+# ✓ Improved volume mount specifications
+# ✓ Added timezone configuration to all relevant services
