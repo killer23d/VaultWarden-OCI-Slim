@@ -60,12 +60,10 @@ prompt_for_secret() {
 # --- Essential Configuration Steps ---
 configure_essentials() {
     log_step "1. Domain Configuration"
-    local domain; domain=$(get_current_value "DOMAIN_NAME")
-    read -p "Enter primary domain (e.g., example.com) [${domain}]: " d; d=${d:-$domain}
-    local app_domain; app_domain=$(get_current_value "APP_DOMAIN")
-    read -p "Enter Vaultwarden FQDN (e.g., vault.example.com) [vault.${d}]: " ad; ad=${ad:-vault.${d}}
-    update_setting "DOMAIN_NAME" "$d"; update_setting "APP_DOMAIN" "$ad"; update_setting "DOMAIN" "https://${ad}"
-    log_success "Domain configured: https://${ad}"
+    local domain; domain=$(get_current_value "VAULTWARDEN_DOMAIN")
+    read -p "Enter Vaultwarden FQDN (e.g., vault.example.com) [${domain}]: " d; d=${d:-$domain}
+    update_setting "VAULTWARDEN_DOMAIN" "$d"
+    log_success "Domain configured: https://${d}"
 
     log_step "2. Administrator Configuration"
     local email; email=$(get_current_value "ADMIN_EMAIL")
@@ -207,7 +205,7 @@ main() {
 This wizard will guide you through all essential and advanced settings.
 Press Enter to accept the default value in brackets [].
 EOF
-    
+
     pre_flight_check
     configure_essentials
     configure_advanced
