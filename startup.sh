@@ -16,7 +16,7 @@ readonly VAULTWARDEN_DATA_DIR="./data/bwdata"
 readonly VAULTWARDEN_DATA_CONTAINER_DIR="/data/bwdata"
 
 # ================================
-# BEST PRACTICE: STRICT ENVIRONMENT VALIDATION
+# BEST PRACTICE: STRICT ENVIRONMENT VALIDATION (FAIL FAST)
 # ================================
 
 validate_environment() {
@@ -49,14 +49,28 @@ validate_environment() {
     fi
 }
 
-# Load libraries without fallbacks (BEST PRACTICE: No silent failures)
+# Load libraries without fallbacks (BEST PRACTICE: FAIL FAST, NO MASKING)
 load_libraries() {
     local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 
-    # Source required libraries (will fail if not found due to set -e)
-    source "$script_dir/lib/common.sh"
-    source "$script_dir/lib/config.sh"
-    source "$script_dir/lib/docker.sh"
+    # FAIL FAST: No fallbacks, require proper installation
+    source "$script_dir/lib/common.sh" || {
+        echo "❌ FATAL: Required library lib/common.sh not found" >&2
+        echo "🔧 Solution: Run './init-setup.sh' or restore missing files" >&2
+        exit 1
+    }
+    
+    source "$script_dir/lib/config.sh" || {
+        echo "❌ FATAL: Required library lib/config.sh not found" >&2
+        echo "🔧 Solution: Run './init-setup.sh' or restore missing files" >&2
+        exit 1
+    }
+    
+    source "$script_dir/lib/docker.sh" || {
+        echo "❌ FATAL: Required library lib/docker.sh not found" >&2
+        echo "🔧 Solution: Run './init-setup.sh' or restore missing files" >&2
+        exit 1
+    }
 }
 
 # ================================
@@ -106,7 +120,7 @@ validate_core_configuration() {
     log_success "✅ Core configuration validation passed"
 }
 
-# BEST PRACTICE: Validate backup configuration before enabling service
+# BEST PRACTICE: CRITICAL PRE-FLIGHT VALIDATION - Backup configuration
 validate_backup_configuration() {
     if [[ "${ENABLE_BACKUP:-false}" != "true" ]]; then
         return 0  # Backup disabled, nothing to validate
@@ -119,7 +133,7 @@ validate_backup_configuration() {
     local backup_passphrase="${BACKUP_PASSPHRASE:-}"
     local errors=()
 
-    # Check required variables
+    # CRITICAL: Check required variables
     if [[ -z "$backup_remote" ]]; then
         errors+=("❌ BACKUP_REMOTE is required when ENABLE_BACKUP=true")
     fi
@@ -129,12 +143,12 @@ validate_backup_configuration() {
         errors+=("   Generate with: openssl rand -base64 32")
     fi
 
-    # Check if rclone config exists and has content
+    # CRITICAL: Check if rclone config exists and has content
     if [[ ! -f "$rclone_config" ]] || [[ ! -s "$rclone_config" ]]; then
         errors+=("❌ rclone configuration not found or empty: $rclone_config")
         errors+=("   Configure with: docker compose run --rm bw_backup rclone config")
     elif [[ -n "$backup_remote" ]]; then
-        # Check if specified remote exists in config
+        # CRITICAL: Check if specified remote exists in config
         if ! grep -q "^\[$backup_remote\]" "$rclone_config"; then
             errors+=("❌ Backup remote '$backup_remote' not found in rclone.conf")
             local available_remotes
@@ -144,9 +158,9 @@ validate_backup_configuration() {
     fi
 
     if [[ ${#errors[@]} -gt 0 ]]; then
-        log_warning "Backup configuration errors found:"
+        log_error "❌ CRITICAL: Backup configuration errors found:"
         printf '  %s\n' "${errors[@]}"
-        log_warning "🔧 Disabling backup profile until issues are resolved"
+        log_error "🔧 DISABLING backup profile to prevent silent failures"
         export ENABLE_BACKUP=false
         return 1
     fi
@@ -155,7 +169,7 @@ validate_backup_configuration() {
     return 0
 }
 
-# BEST PRACTICE: Validate DNS configuration before enabling service
+# BEST PRACTICE: CRITICAL PRE-FLIGHT VALIDATION - DNS configuration
 validate_dns_configuration() {
     if [[ "${ENABLE_DNS:-false}" != "true" ]]; then
         return 0  # DNS disabled, nothing to validate
@@ -173,9 +187,9 @@ validate_dns_configuration() {
     done
 
     if [[ ${#errors[@]} -gt 0 ]]; then
-        log_warning "DNS configuration errors found:"
+        log_error "❌ CRITICAL: DNS configuration errors found:"
         printf '  %s\n' "${errors[@]}"
-        log_warning "🔧 Disabling DNS profile until issues are resolved"
+        log_error "🔧 DISABLING DNS profile to prevent silent failures"
         export ENABLE_DNS=false
         return 1
     fi
@@ -184,7 +198,7 @@ validate_dns_configuration() {
     return 0
 }
 
-# BEST PRACTICE: Validate monitoring configuration before enabling service
+# BEST PRACTICE: CRITICAL PRE-FLIGHT VALIDATION - Monitoring configuration
 validate_monitoring_configuration() {
     if [[ "${ENABLE_MONITORING:-false}" != "true" ]]; then
         return 0  # Monitoring disabled, nothing to validate
@@ -208,16 +222,16 @@ validate_monitoring_configuration() {
         log_info "🔗 Webhook alerts configured"
     fi
 
-    # Require at least one alert destination
+    # CRITICAL: Require at least one alert destination
     if [[ "$has_email_config" == "false" && "$has_webhook_config" == "false" ]]; then
         errors+=("❌ Monitoring enabled but no alert destinations configured")
         errors+=("   Required: ALERT_EMAIL + SMTP config OR WEBHOOK_URL")
     fi
 
     if [[ ${#errors[@]} -gt 0 ]]; then
-        log_warning "Monitoring configuration errors found:"
+        log_error "❌ CRITICAL: Monitoring configuration errors found:"
         printf '  %s\n' "${errors[@]}"
-        log_warning "🔧 Disabling monitoring profile until issues are resolved"
+        log_error "🔧 DISABLING monitoring profile to prevent silent failures"
         export ENABLE_MONITORING=false
         return 1
     fi
@@ -324,15 +338,15 @@ validate_directory_structure() {
 determine_active_profiles() {
     local -a profiles=()
 
-    log_step "Determining active service profiles with validation..."
+    log_step "Determining active service profiles with CRITICAL validation..."
 
-    # Validate and enable backup profile
+    # CRITICAL: Validate and enable backup profile
     if validate_backup_configuration; then
         profiles+=(--profile backup)
         log_success "✅ Backup profile enabled and validated"
         prepare_backup_config
     else
-        log_info "ℹ️  Backup profile disabled"
+        log_info "ℹ️  Backup profile disabled (configuration errors)"
     fi
 
     # Security profile (minimal requirements)
@@ -343,12 +357,12 @@ determine_active_profiles() {
         log_info "ℹ️  Security profile disabled"
     fi
 
-    # Validate and enable DNS profile
+    # CRITICAL: Validate and enable DNS profile
     if validate_dns_configuration; then
         profiles+=(--profile dns)
         log_success "✅ DNS profile enabled and validated (ddclient)"
     else
-        log_info "ℹ️  DNS profile disabled"
+        log_info "ℹ️  DNS profile disabled (configuration errors)"
     fi
 
     # Maintenance profile (minimal requirements)
@@ -359,12 +373,12 @@ determine_active_profiles() {
         log_info "ℹ️  Maintenance profile disabled"
     fi
 
-    # Validate and enable monitoring profile
+    # CRITICAL: Validate and enable monitoring profile
     if validate_monitoring_configuration; then
         profiles+=(--profile monitoring)
         log_success "✅ Monitoring profile enabled and validated"
     else
-        log_info "ℹ️  Monitoring profile disabled"
+        log_info "ℹ️  Monitoring profile disabled (configuration errors)"
     fi
 
     # Development profile (future)
@@ -440,7 +454,7 @@ EOF
 # ================================
 
 initialize() {
-    log_info "Initializing VaultWarden-OCI startup with validation..."
+    log_info "Initializing VaultWarden-OCI startup with CRITICAL validation..."
 
     # Create directory structure first
     create_directory_structure
@@ -467,7 +481,7 @@ initialize() {
     # BEST PRACTICE: Validate core configuration
     validate_core_configuration
 
-    # Determine active profiles based on validated configuration
+    # CRITICAL: Determine active profiles based on validated configuration
     determine_active_profiles
 
     log_success "Initialization complete"
@@ -502,7 +516,7 @@ setup_configuration() {
 }
 
 deploy_stack() {
-    log_info "Deploying container stack with validated profiles..."
+    log_info "Deploying container stack with VALIDATED profiles..."
 
     # Build Docker Compose command with profiles
     local compose_cmd=(docker compose --env-file "$COMPOSE_ENV_FILE")
@@ -668,7 +682,7 @@ main() {
                 ;;
             --help|-h)
                 cat <<EOF
-VaultWarden-OCI Enhanced Startup Script (Best Practices Edition)
+VaultWarden-OCI Enhanced Startup Script (FAIL-FAST Edition)
 
 Usage: $0 [OPTIONS]
 
@@ -684,11 +698,11 @@ Environment Variables:
     LOG_FILE            Custom log file path
 
     Profile Control (settings.env):
-    ENABLE_BACKUP       Enable backup services (requires configuration)
+    ENABLE_BACKUP       Enable backup services (requires CRITICAL validation)
     ENABLE_SECURITY     Enable security services (fail2ban)
-    ENABLE_DNS          Enable DNS services (requires configuration)
+    ENABLE_DNS          Enable DNS services (requires CRITICAL validation)
     ENABLE_MAINTENANCE  Enable maintenance services (watchtower)
-    ENABLE_MONITORING   Enable monitoring services (requires configuration)
+    ENABLE_MONITORING   Enable monitoring services (requires CRITICAL validation)
 
 Examples:
     $0                                    # Start with auto-detected profiles
@@ -699,18 +713,18 @@ Examples:
 
 Profile Information:
     core        - Essential services (always enabled)
-    backup      - Database backup and restore (validated)
+    backup      - Database backup and restore (CRITICAL validation required)
     security    - fail2ban intrusion protection
-    dns         - ddclient dynamic DNS updates (validated)
+    dns         - ddclient dynamic DNS updates (CRITICAL validation required)
     maintenance - watchtower updates
-    monitoring  - system monitoring and alerts (validated)
+    monitoring  - system monitoring and alerts (CRITICAL validation required)
 
 Best Practices Implemented:
-    ✓ Strict dependency validation (no fallbacks)
-    ✓ Configuration validation before service start
+    ✓ FAIL-FAST dependency validation (NO FALLBACKS)
+    ✓ CRITICAL pre-flight validation before service start
     ✓ Single source of truth for variables
     ✓ Clear error messages with remediation steps
-    ✓ Graceful service degradation for invalid config
+    ✓ Service disabling for invalid config (prevents silent failures)
 
 EOF
                 exit 0
@@ -722,9 +736,9 @@ EOF
     done
 
     # Main execution flow with best practices
-    log_info "🚀 Starting VaultWarden-OCI enhanced deployment (Best Practices Edition)..."
+    log_info "🚀 Starting VaultWarden-OCI enhanced deployment (FAIL-FAST Edition)..."
 
-    # BEST PRACTICE: Validate environment first
+    # BEST PRACTICE: Validate environment first (FAIL FAST)
     validate_environment
     load_libraries
 
