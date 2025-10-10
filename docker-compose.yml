@@ -373,17 +373,40 @@ services:
       start_period: 60s
     environment:
       - TZ=${TZ:-UTC}
-      # INTEGRATED MONITORING THRESHOLDS (from unused config files)
-      - DISK_ALERT_THRESHOLD=${DISK_ALERT_THRESHOLD:-85}
+      # UNIFIED MONITORING THRESHOLDS (aligned with lib/monitoring-config.sh)
+      # System Resource Thresholds
+      - CPU_WARNING_THRESHOLD=${CPU_WARNING_THRESHOLD:-70}
       - CPU_ALERT_THRESHOLD=${CPU_ALERT_THRESHOLD:-80}
+      - CPU_CRITICAL_THRESHOLD=${CPU_CRITICAL_THRESHOLD:-90}
+      - MEMORY_WARNING_THRESHOLD=${MEMORY_WARNING_THRESHOLD:-75}
       - MEMORY_ALERT_THRESHOLD=${MEMORY_ALERT_THRESHOLD:-85}
-      - LOAD_ALERT_THRESHOLD=${LOAD_ALERT_THRESHOLD:-2.0}
-      # SQLite-specific monitoring (from config/sqlite-thresholds.conf)
+      - MEMORY_CRITICAL_THRESHOLD=${MEMORY_CRITICAL_THRESHOLD:-85}
+      - LOAD_WARNING_THRESHOLD=${LOAD_WARNING_THRESHOLD:-1.0}
+      - LOAD_ALERT_THRESHOLD=${LOAD_ALERT_THRESHOLD:-1.5}
+      - LOAD_CRITICAL_THRESHOLD=${LOAD_CRITICAL_THRESHOLD:-2.0}
+      - DISK_WARNING_THRESHOLD=${DISK_WARNING_THRESHOLD:-75}
+      - DISK_ALERT_THRESHOLD=${DISK_ALERT_THRESHOLD:-85}
+      - DISK_CRITICAL_THRESHOLD=${DISK_CRITICAL_THRESHOLD:-85}
+      # SQLite-specific monitoring (unified variable names)
+      - SQLITE_SIZE_WARNING_MB=${SQLITE_SIZE_WARNING_MB:-75}
       - SQLITE_SIZE_ALERT_MB=${SQLITE_SIZE_ALERT_MB:-100}
+      - SQLITE_SIZE_CRITICAL_MB=${SQLITE_SIZE_CRITICAL_MB:-500}
+      - WAL_SIZE_WARNING_MB=${WAL_SIZE_WARNING_MB:-5}
       - WAL_SIZE_ALERT_MB=${WAL_SIZE_ALERT_MB:-10}
+      - WAL_SIZE_CRITICAL_MB=${WAL_SIZE_CRITICAL_MB:-50}
+      - FRAGMENTATION_WARNING_RATIO=${FRAGMENTATION_WARNING_RATIO:-1.2}
       - FRAGMENTATION_ALERT_RATIO=${FRAGMENTATION_ALERT_RATIO:-1.5}
-      - FREELIST_ALERT_THRESHOLD=${FREELIST_ALERT_THRESHOLD:-15}
-      # Alert configuration
+      - FRAGMENTATION_CRITICAL_RATIO=${FRAGMENTATION_CRITICAL_RATIO:-1.5}
+      # Security monitoring thresholds
+      - FAIL2BAN_BANNED_WARNING=${FAIL2BAN_BANNED_WARNING:-10}
+      - FAIL2BAN_BANNED_CRITICAL=${FAIL2BAN_BANNED_CRITICAL:-25}
+      # Monitoring intervals and behavior
+      - MONITOR_REFRESH_INTERVAL=${MONITOR_REFRESH_INTERVAL:-5}
+      - PERF_MONITOR_INTERVAL=${PERF_MONITOR_INTERVAL:-5}
+      - DASHBOARD_REFRESH_INTERVAL=${DASHBOARD_REFRESH_INTERVAL:-5}
+      - ALERT_MIN_INTERVAL_S=${ALERT_MIN_INTERVAL_S:-1800}
+      - ALERT_COOLDOWN_S=${ALERT_COOLDOWN_S:-3600}
+      # Unified alert configuration
       - ALERT_EMAIL=${ALERT_EMAIL:-}
       - WEBHOOK_URL=${WEBHOOK_URL:-}
       - SMTP_HOST=${SMTP_HOST:-}
@@ -391,8 +414,16 @@ services:
       - SMTP_USERNAME=${SMTP_USERNAME:-}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - SMTP_FROM=${SMTP_FROM:-}
+      # Unified path configuration
+      - SQLITE_DB_PATH=${SQLITE_DB_PATH:-/data/bwdata/db.sqlite3}
+      - SQLITE_DB_CONTAINER_PATH=${SQLITE_DB_CONTAINER_PATH:-/data/bwdata/db.sqlite3}
+      - VAULTWARDEN_DATA_DIR=${VAULTWARDEN_DATA_DIR:-/data/bwdata}
+      - VAULTWARDEN_DATA_CONTAINER_DIR=${VAULTWARDEN_DATA_CONTAINER_DIR:-/data/bwdata}
       # Log management
       - LOG_RETENTION_DAYS=${LOG_RETENTION_DAYS:-30}
+      - MAX_LOG_ENTRIES=${MAX_LOG_ENTRIES:-50}
+      - LOG_DIR=${LOG_DIR:-/app/logs}
+      - PERF_LOG_DIR=${PERF_LOG_DIR:-/app/data/performance_logs}
     deploy:
       resources:
         limits:
@@ -406,7 +437,10 @@ services:
         # Install required packages
         apk add --no-cache bash curl jq bc sysstat docker-cli sqlite &&
 
-        # Create monitoring crontab with integrated thresholds
+        # Create log directories
+        mkdir -p /app/logs /app/data/performance_logs &&
+
+        # Create monitoring crontab with unified thresholds
         echo "*/5 * * * * /app/monitor.sh --check >/dev/null 2>&1" > /tmp/monitoring.cron &&
         echo "0 * * * * /app/alerts.sh --hourly >/dev/null 2>&1" >> /tmp/monitoring.cron &&
         echo "*/15 * * * * /app/perf-monitor.sh --collect >/dev/null 2>&1" >> /tmp/monitoring.cron &&
@@ -431,7 +465,7 @@ networks:
 
 # ==============================================
 # VaultWarden-OCI-Slim SQLite Configuration
-# Optimized for 1 OCPU/6GB OCI A1 Flex
+# Optimized for 1 OCPU/6GB OCI A1 Flex with UNIFIED MONITORING
 # ==============================================
 # 
 # Resource Allocation Summary:
@@ -443,16 +477,26 @@ networks:
 # - DDClient:    0.05 CPU, 32MB RAM
 # Total:         1.00 CPU, 672MB RAM
 #
-# BEST PRACTICES IMPLEMENTED:
-# ✓ Single source of truth for configuration (settings.env)
-# ✓ Required variables use ${VAR:?message} syntax
-# ✓ Service-specific validation in healthchecks
-# ✓ Monitoring service only enabled when configured
-# ✓ Backup service validates rclone configuration
-# ✓ DDClient validates required variables
-# ✓ Clear error messages for missing configuration
-# ✓ INTEGRATED monitoring thresholds (no more disconnected variables)
-# ✓ FAIL-FAST healthchecks (no silent failures)
+# UNIFIED MONITORING CONFIGURATION:
+# ✓ Single source of truth for all monitoring thresholds
+# ✓ Consistent variable names across docker-compose.yml and scripts
+# ✓ Centralized configuration via lib/monitoring-config.sh
+# ✓ External config file support with priority hierarchy
+# ✓ Built-in threshold validation and standardized evaluation
+# ✓ Framework integration with graceful fallbacks
+#
+# UNIFIED THRESHOLD VARIABLES (aligned with lib/monitoring-config.sh):
+# System: CPU_*_THRESHOLD, MEMORY_*_THRESHOLD, LOAD_*_THRESHOLD, DISK_*_THRESHOLD
+# SQLite: SQLITE_SIZE_*_MB, WAL_SIZE_*_MB, FRAGMENTATION_*_RATIO
+# Security: FAIL2BAN_BANNED_*, CONTAINER_*_TIMEOUT_S
+# Intervals: *_REFRESH_INTERVAL, ALERT_*_S, LOG_RETENTION_DAYS
+#
+# Configuration Priority (highest to lowest):
+# 1. config/performance-targets.conf
+# 2. config/alert-thresholds.conf
+# 3. config/monitoring-intervals.conf
+# 4. settings.env environment variables
+# 5. Built-in defaults in lib/monitoring-config.sh
 #
 # Profile Usage Examples:
 # docker compose up -d                           # Core services only
@@ -462,3 +506,12 @@ networks:
 # docker compose --profile maintenance up -d    # Core + watchtower
 # docker compose --profile monitoring up -d     # Core + monitoring (if configured)
 # ./startup.sh                                  # Automatic profile selection with validation
+#
+# UNIFIED CONFIGURATION BENEFITS:
+# ✓ Eliminates code duplication between monitoring scripts
+# ✓ Consistent threshold evaluation across all tools
+# ✓ Single place to adjust monitoring behavior
+# ✓ Standardized variable names and evaluation functions
+# ✓ External configuration file support for advanced users
+# ✓ Built-in validation prevents configuration errors
+# ✓ Framework integration with graceful fallbacks
