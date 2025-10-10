@@ -2,230 +2,198 @@
 #
 # settings.env.wizard.sh - Interactive Setup Wizard for VaultWarden-OCI-Slim
 #
-# This script guides users through the most critical configuration steps
-# for the settings.env file. It reads existing values, suggests generating
-# secure secrets, and safely updates the configuration.
+# This script guides users through critical and advanced configuration steps,
+# orchestrating other scripts as needed for a comprehensive setup.
 
 set -euo pipefail
 
 # --- Path and Environment Setup ---
-# Robustly determine the repository root, assuming this script is in tools/
 TOOLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${TOOLS_DIR}/.." && pwd)"
 readonly SETTINGS_FILE="$REPO_ROOT/settings.env"
 readonly SETTINGS_EXAMPLE_FILE="$REPO_ROOT/settings.env.example"
 
 # --- Load Common Library for Color and Logging ---
-# This script now requires the common library for a consistent UX.
 readonly LIB_COMMON_PATH="$REPO_ROOT/lib/common.sh"
 if [[ -f "$LIB_COMMON_PATH" ]]; then
     source "$LIB_COMMON_PATH"
 else
-    # Provide a clear, actionable error if the library is missing.
     echo "[ERROR] Required library not found at: $LIB_COMMON_PATH" >&2
-    echo "This indicates an incomplete repository clone. Please re-clone the project or run 'init-setup.sh'." >&2
     exit 1
 fi
 
 # --- Pre-flight Checks ---
 pre_flight_check() {
     log_step "Verifying Environment"
-
-    # Check for OpenSSL
     if ! command -v openssl >/dev/null 2>&1; then
-        log_error "'openssl' command is required to generate secure secrets but was not found."
+        log_error "'openssl' is required but not found."
     fi
-
-    # Check for settings.env and handle its absence gracefully
     if [[ ! -f "$SETTINGS_FILE" ]]; then
         log_warning "Configuration file not found: $SETTINGS_FILE"
-        if [[ -f "$SETTINGS_EXAMPLE_FILE" ]]; then
-            read -p "Create it now from the template (settings.env.example)? (Y/n): " create_file
-            if [[ "$create_file" =~ ^[Nn]$ ]]; then
-                log_error "Setup cannot continue without a settings.env file. Aborting."
-            else
-                cp "$SETTINGS_EXAMPLE_FILE" "$SETTINGS_FILE"
-                chmod 600 "$SETTINGS_FILE"
-                log_success "Created '$SETTINGS_FILE' with secure permissions (600)."
-            fi
+        read -p "Create it now from the template? (Y/n): " create_file
+        if [[ "$create_file" =~ ^[Nn]$ ]]; then
+            log_error "Aborting. Setup cannot continue without settings.env."
         else
-            log_error "The template file 'settings.env.example' is also missing. Please run 'init-setup.sh' or re-clone the repository."
+            cp "$SETTINGS_EXAMPLE_FILE" "$SETTINGS_FILE"; chmod 600 "$SETTINGS_FILE"
+            log_success "Created '$SETTINGS_FILE' with secure permissions (600)."
         fi
     fi
     log_success "Environment check passed."
 }
 
 # --- Helper Functions ---
-get_current_value() {
-    local key="$1"
-    grep "^${key}=" "$SETTINGS_FILE" | cut -d'=' -f2- || echo ""
-}
-
+get_current_value() { grep "^${1}=" "$SETTINGS_FILE" | cut -d'=' -f2- || echo ""; }
 update_setting() {
-    local key="$1"
-    local value="$2"
-    # Use a temporary file and mv for atomic replacement, which is safer.
-    # The '#' delimiter in sed avoids issues with file paths or URLs in values.
-    sed "s#^${key}=.*#${key}=${value}#" "$SETTINGS_FILE" > "${SETTINGS_FILE}.tmp" && mv "${SETTINGS_FILE}.tmp" "$SETTINGS_FILE"
+    sed -i "s#^${1}=.*#${1}=${2}#" "$SETTINGS_FILE"
 }
-
-prompt_for_secret_generation() {
-    local key_name="$1"
-    local description="$2"
-    log_info "$description"
-    read -p "Generate a new secure ${key_name}? (Recommended) (Y/n): " generate
-    if [[ ! "$generate" =~ ^[Nn]$ ]]; then
-        local new_secret
-        new_secret=$(openssl rand -base64 48)
-        update_setting "$key_name" "$new_secret"
-        log_success "New ${key_name} generated and saved to settings.env."
+prompt_for_secret() {
+    log_info "$2"
+    read -p "Generate a new secure ${1}? (Recommended) (Y/n): " gen
+    if [[ ! "$gen" =~ ^[Nn]$ ]]; then
+        update_setting "$1" "$(openssl rand -base64 48)"
+        log_success "New ${1} generated and saved."
     else
-        log_warning "Skipped generating a new ${key_name}. Please ensure the existing one is secure."
+        log_warning "Skipped ${1} generation. Please ensure it is secure."
     fi
 }
 
-# --- Wizard Steps ---
-
-configure_domain() {
+# --- Essential Configuration Steps ---
+configure_essentials() {
     log_step "1. Domain Configuration"
-    local current_domain_name
-    current_domain_name=$(get_current_value "DOMAIN_NAME")
+    local domain; domain=$(get_current_value "DOMAIN_NAME")
+    read -p "Enter primary domain (e.g., example.com) [${domain}]: " d; d=${d:-$domain}
+    local app_domain; app_domain=$(get_current_value "APP_DOMAIN")
+    read -p "Enter Vaultwarden FQDN (e.g., vault.example.com) [vault.${d}]: " ad; ad=${ad:-vault.${d}}
+    update_setting "DOMAIN_NAME" "$d"; update_setting "APP_DOMAIN" "$ad"; update_setting "DOMAIN" "https://${ad}"
+    log_success "Domain configured: https://${ad}"
 
-    read -p "Enter your primary domain name (e.g., example.com) [${current_domain_name}]: " domain_name
-    domain_name=${domain_name:-$current_domain_name}
-
-    local default_app_domain="vault.${domain_name}"
-    local current_app_domain
-    current_app_domain=$(get_current_value "APP_DOMAIN")
-
-    read -p "Enter the full domain for Vaultwarden (e.g., vault.example.com) [${default_app_domain}]: " app_domain
-    app_domain=${app_domain:-$default_app_domain}
-
-    update_setting "DOMAIN_NAME" "$domain_name"
-    update_setting "APP_DOMAIN" "$app_domain"
-    update_setting "DOMAIN" "https://${app_domain}"
-
-    log_success "Domain configured: https://${app_domain}"
-}
-
-configure_admin() {
     log_step "2. Administrator Configuration"
-    local current_admin_email
-    current_admin_email=$(get_current_value "ADMIN_EMAIL")
-    
-    read -p "Enter the administrator's email address [${current_admin_email}]: " admin_email
-    admin_email=${admin_email:-$current_admin_email}
-    update_setting "ADMIN_EMAIL" "$admin_email"
+    local email; email=$(get_current_value "ADMIN_EMAIL")
+    read -p "Enter admin email [${email}]: " e; e=${e:-$email}
+    update_setting "ADMIN_EMAIL" "$e"
+    prompt_for_secret "ADMIN_TOKEN" "The ADMIN_TOKEN is for accessing the Vaultwarden admin panel."
 
-    prompt_for_secret_generation "ADMIN_TOKEN" "The ADMIN_TOKEN is a secure key for accessing the Vaultwarden admin panel."
-}
-
-configure_smtp() {
-    log_step "3. SMTP Email Configuration (Optional)"
-    log_info "SMTP is required for user invitations, password resets, and alert notifications."
-    read -p "Do you want to configure SMTP now? (y/N): " configure_smtp
-    if [[ "$configure_smtp" =~ ^[Yy]$ ]]; then
-        read -p "Enter SMTP Host (e.g., smtp.mailersend.net): " smtp_host
-        read -p "Enter SMTP Port [587]: " smtp_port
-        read -p "Enter SMTP Username: " smtp_username
-        read -sp "Enter SMTP Password/Token: " smtp_password; echo
-        read -p "Enter SMTP From Email Address (e.g., vault@yourdomain.com): " smtp_from
-
-        update_setting "SMTP_HOST" "$smtp_host"
-        update_setting "SMTP_PORT" "${smtp_port:-587}"
-        update_setting "SMTP_USERNAME" "$smtp_username"
-        update_setting "SMTP_PASSWORD" "$smtp_password"
-        update_setting "SMTP_FROM" "$smtp_from"
-        
-        log_success "SMTP settings updated."
-    else
-        log_warning "SMTP configuration skipped. Email features will be disabled."
-    fi
-}
-
-configure_backups() {
-    log_step "4. Backup Configuration (Optional but Recommended)"
-    local current_enable_backup
-    current_enable_backup=$(get_current_value "ENABLE_BACKUP")
-    read -p "Enable automated remote backups? [${current_enable_backup}]: " enable_backup
-    enable_backup=${enable_backup:-$current_enable_backup}
-
-    if [[ "$enable_backup" == "true" ]]; then
+    log_step "3. Backup Configuration"
+    read -p "Enable automated remote backups? (y/N): " enable_backup
+    if [[ "$enable_backup" =~ ^[Yy]$ ]]; then
         update_setting "ENABLE_BACKUP" "true"
-        log_success "Backups enabled."
-
-        read -p "Enter your rclone remote name (e.g., b2-backups): " backup_remote
-        update_setting "BACKUP_REMOTE" "$backup_remote"
-
-        prompt_for_secret_generation "BACKUP_PASSPHRASE" "The BACKUP_PASSPHRASE is used to encrypt your database backups."
-        
-        log_warning "IMPORTANT: You must still configure your rclone remote manually by running:"
-        log_warning "  cd ${REPO_ROOT} && docker compose run --rm bw_backup rclone config"
+        local remote; remote=$(get_current_value "BACKUP_REMOTE")
+        read -p "Enter rclone remote name (e.g., b2-backups): " br; br=${br:-$remote}
+        update_setting "BACKUP_REMOTE" "$br"
+        prompt_for_secret "BACKUP_PASSPHRASE" "The BACKUP_PASSPHRASE encrypts your database backups."
+        log_warning "IMPORTANT: Configure rclone manually: cd ${REPO_ROOT} && docker compose run --rm bw_backup rclone config"
     else
         update_setting "ENABLE_BACKUP" "false"
         log_warning "Automated backups disabled."
     fi
 }
 
+# --- Advanced Configuration Menu ---
+configure_advanced() {
+    while true; do
+        log_step "Advanced Feature Configuration (Optional)"
+        echo "Select a feature to configure:"
+        echo "  [1] Admin Page Hardening (Recommended)"
+        echo "  [2] OCI Vault Integration"
+        echo "  [3] Push Notifications"
+        echo "  [4] Cloudflare API Token"
+        echo "  [5] SMTP Email Server"
+        echo ""
+        echo "  [D] Done / Skip"
+        read -p "Enter your choice: " choice
+
+        case $choice in
+            1) configure_admin_hardening ;;
+            2) configure_oci_vault ;;
+            3) configure_push_notifications ;;
+            4) configure_cloudflare ;;
+            5) configure_smtp ;;
+            [Dd]|"") break ;;
+            *) log_warning "Invalid choice. Please try again." ;;
+        esac
+    done
+}
+
 configure_admin_hardening() {
-    log_step "5. Admin Page Hardening (Optional but Recommended)"
-    log_info "This adds an extra username/password prompt before the Vaultwarden admin page."
-    read -p "Enable extra security for the admin page? (Y/n): " enable_hardening
+    log_info "Setting up Basic Auth for the admin panel..."
+    read -p "Enter a username for the admin prompt [admin]: " user; user=${user:-admin}
+    read -sp "Enter a password for this user (will not be stored): " pass; echo
+    if [[ -z "$pass" ]]; then log_error "Password cannot be empty."; return 1; fi
 
-    if [[ ! "$enable_hardening" =~ ^[Nn]$ ]]; then
-        log_info "Setting up Basic Authentication for the admin panel..."
+    log_info "Temporarily starting Caddy to generate secure hash..."
+    docker compose up -d bw_caddy
+    sleep 5
+    local hash; hash=$(docker compose exec bw_caddy caddy hash-password --plaintext "$pass" | tr -d '\r')
+    docker compose down
+    if [[ -z "$hash" ]]; then log_error "Failed to generate hash."; return 1; fi
 
-        local current_user
-        current_user=$(get_current_value "BASIC_ADMIN_USER")
-        read -p "Enter a username for the admin prompt [admin]: " admin_user
-        admin_user=${admin_user:-${current_user:-admin}}
+    grep -q "^BASIC_ADMIN_USER=" "$SETTINGS_FILE" || echo "BASIC_ADMIN_USER=" >> "$SETTINGS_FILE"
+    grep -q "^BASIC_ADMIN_HASH=" "$SETTINGS_FILE" || echo "BASIC_ADMIN_HASH=" >> "$SETTINGS_FILE"
+    update_setting "BASIC_ADMIN_USER" "$user"; update_setting "BASIC_ADMIN_HASH" "$hash"
+    log_success "Secure credentials saved."
 
-        read -sp "Enter a password for this user (will not be stored in plaintext): " admin_pass; echo
+    local caddyfile="$REPO_ROOT/caddy/Caddyfile"
+    sed -i -e '/# VAULTWARDEN ADMIN HARDENING/,/}/ s/# *\(basicauth\)/  \1/' \
+           -e '/# VAULTWARDEN ADMIN HARDENING/,/}/ s/# *\({\|$\)/    \1/' \
+           -e '/# VAULTWARDEN ADMIN HARDENING/,/}/ s/# *}/\  }/' "$caddyfile"
+    log_success "Admin hardening enabled in Caddyfile."
+}
 
-        if [[ -z "$admin_pass" ]]; then
-            log_error "Password cannot be empty. Aborting hardening setup."
-            return 1
-        fi
-
-        log_info "Temporarily starting Caddy to generate a secure password hash..."
-        docker compose up -d bw_caddy
-
-        until [[ "$(docker inspect -f '{{.State.Status}}' bw_caddy 2>/dev/null)" == "running" ]]; do
-            log_info "Waiting for Caddy container to start..."
-            sleep 2
-        done
-        sleep 5
-
-        local hashed_pass
-        hashed_pass=$(docker compose exec bw_caddy caddy hash-password --plaintext "$admin_pass" | tr -d '\r')
-
-        log_info "Stopping temporary Caddy container..."
-        docker compose down
-
-        if [[ -z "$hashed_pass" ]]; then
-            log_error "Failed to generate password hash. Please try again."
-            return 1
-        fi
-
-        grep -q "^BASIC_ADMIN_USER=" "$SETTINGS_FILE" || echo "BASIC_ADMIN_USER=" >> "$SETTINGS_FILE"
-        grep -q "^BASIC_ADMIN_HASH=" "$SETTINGS_FILE" || echo "BASIC_ADMIN_HASH=" >> "$SETTINGS_FILE"
-
-        update_setting "BASIC_ADMIN_USER" "$admin_user"
-        update_setting "BASIC_ADMIN_HASH" "$hashed_pass"
-        log_success "Secure credentials saved to settings.env."
-
-        local caddyfile="$REPO_ROOT/caddy/Caddyfile"
-        if grep -q "# basicauth" "$caddyfile"; then
-            sed -i -e '/# VAULTWARDEN ADMIN HARDENING/,/}/ s/# *\(basicauth\)/  \1/' \
-                   -e '/# VAULTWARDEN ADMIN HARDENING/,/}/ s/# *\({\|$\)/    \1/' \
-                   -e '/# VAULTWARDEN ADMIN HARDENING/,/}/ s/# *}/\  }/' "$caddyfile"
-            log_success "Admin hardening has been enabled in the Caddyfile."
-        else
-            log_info "Admin hardening already appears to be enabled in the Caddyfile."
-        fi
-    else
-        log_warning "Admin page hardening skipped."
+configure_oci_vault() {
+    log_info "Configuring OCI Vault integration..."
+    if ! command -v oci >/dev/null 2>&1; then
+        log_error "OCI CLI ('oci') not found. Please run init-setup.sh to install it."; return 1;
     fi
+    if [[ ! -f "$HOME/.oci/config" ]]; then
+        log_warning "OCI CLI config not found at ~/.oci/config."
+        read -p "Run 'oci setup config' now to create it? (Y/n): " run_setup
+        if [[ ! "$run_setup" =~ ^[Nn]$ ]]; then
+            /root/bin/oci setup config
+        else
+            log_warning "Skipping OCI Vault setup."; return 0;
+        fi
+    fi
+    local ocid; ocid=$(get_current_value "OCI_SECRET_OCID")
+    read -p "Enter your OCI Secret OCID: " new_ocid; new_ocid=${new_ocid:-$ocid}
+    update_setting "OCI_SECRET_OCID" "$new_ocid"
+    log_success "OCI Secret OCID saved."
+}
+
+configure_push_notifications() {
+    log_info "Configuring Push Notifications..."
+    log_warning "Get credentials from https://bitwarden.com/host/"
+    local id; id=$(get_current_value "PUSH_INSTALLATION_ID")
+    read -p "Enter Push Installation ID: " new_id; new_id=${new_id:-$id}
+    update_setting "PUSH_INSTALLATION_ID" "$new_id"
+
+    local key; key=$(get_current_value "PUSH_INSTALLATION_KEY")
+    read -p "Enter Push Installation Key: " new_key; new_key=${new_key:-$key}
+    update_setting "PUSH_INSTALLATION_KEY" "$new_key"
+    log_success "Push notification credentials saved."
+}
+
+configure_cloudflare() {
+    log_info "Configuring Cloudflare API Token..."
+    log_warning "This is optional, for helper scripts."
+    local token; token=$(get_current_value "CF_API_TOKEN")
+    read -p "Enter Cloudflare API Token (optional): " new_token; new_token=${new_token:-$token}
+    update_setting "CF_API_TOKEN" "$new_token"
+    log_success "Cloudflare API Token saved."
+}
+
+configure_smtp() {
+    log_info "Configuring SMTP for email notifications..."
+    read -p "Enter SMTP Host: " host
+    read -p "Enter SMTP Port [587]: " port
+    read -p "Enter SMTP Username: " user
+    read -sp "Enter SMTP Password/Token: " pass; echo
+    read -p "Enter SMTP From Email: " from
+    update_setting "SMTP_HOST" "$host"
+    update_setting "SMTP_PORT" "${port:-587}"
+    update_setting "SMTP_USERNAME" "$user"
+    update_setting "SMTP_PASSWORD" "$pass"
+    update_setting "SMTP_FROM" "$from"
+    log_success "SMTP settings saved."
 }
 
 # --- Main Execution ---
@@ -233,24 +201,20 @@ main() {
     cat << "EOF"
 
 ╔════════════════════════════════════════════════════════════════════╗
-║      VaultWarden-OCI-Slim - Interactive Configuration Wizard         ║
+║      VaultWarden-OCI-Slim - Comprehensive Configuration Wizard     ║
 ╚════════════════════════════════════════════════════════════════════╝
 
+This wizard will guide you through all essential and advanced settings.
+Press Enter to accept the default value in brackets [].
 EOF
-    log_info "This wizard will guide you through the essential settings."
-    log_info "Press Enter to accept the default value in brackets []."
     
     pre_flight_check
-    configure_domain
-    configure_admin
-    configure_smtp
-    configure_backups
-    configure_admin_hardening
+    configure_essentials
+    configure_advanced
 
     cat << EOF
 
-$(log_success "Wizard complete! Your 'settings.env' file has been updated.")
-$(log_info "You can re-run this wizard at any time to change these settings.")
+$(log_success "Wizard complete! 'settings.env' has been fully configured.")
 $(log_info "Next Step: Start the stack by running: cd ${REPO_ROOT} && ./startup.sh")
 ======================================================================
 EOF
