@@ -14,7 +14,7 @@ source "$SCRIPT_DIR/common.sh"
 
 # Required environment variables (SQLite optimized - no MariaDB/Redis)
 declare -ra REQUIRED_VARS=(
-    "APP_DOMAIN"
+    "VAULTWARDEN_DOMAIN"
     "ADMIN_TOKEN"
     "BACKUP_PASSPHRASE"
 )
@@ -147,12 +147,12 @@ validate_configuration() {
         fi
     done
 
-    # Validate domain format
-    if [[ -n "${APP_DOMAIN:-}" ]]; then
-        if [[ "$APP_DOMAIN" =~ ^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$ ]]; then
+    # Validate domain format - UPDATED for VAULTWARDEN_DOMAIN
+    if [[ -n "${VAULTWARDEN_DOMAIN:-}" ]]; then
+        if [[ "$VAULTWARDEN_DOMAIN" =~ ^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$ ]]; then
             log_success "Domain name format is valid"
         else
-            log_warning "Domain name format may be invalid: $APP_DOMAIN"
+            log_warning "Domain name format may be invalid: $VAULTWARDEN_DOMAIN"
             ((warnings++))
         fi
     fi
@@ -327,10 +327,9 @@ migrate_configuration() {
         echo "# SQLite-optimized VaultWarden deployment"
         echo
 
-        # Domain configuration
+        # Domain configuration - UPDATED for consolidation
         echo "# === DOMAIN & SECURITY CONFIGURATION ==="
-        echo "APP_DOMAIN=${APP_DOMAIN:-${DOMAIN_NAME:-}}"
-        echo "DOMAIN=\${APP_DOMAIN:+https://\$APP_DOMAIN}"
+        echo "VAULTWARDEN_DOMAIN=${VAULTWARDEN_DOMAIN:-${APP_DOMAIN:-${DOMAIN_NAME:-}}}"
         echo
 
         # SQLite database configuration
