@@ -59,13 +59,13 @@ load_libraries() {
         echo "🔧 Solution: Run './init-setup.sh' or restore missing files" >&2
         exit 1
     }
-    
+
     source "$script_dir/lib/config.sh" || {
         echo "❌ FATAL: Required library lib/config.sh not found" >&2
         echo "🔧 Solution: Run './init-setup.sh' or restore missing files" >&2
         exit 1
     }
-    
+
     source "$script_dir/lib/docker.sh" || {
         echo "❌ FATAL: Required library lib/docker.sh not found" >&2
         echo "🔧 Solution: Run './init-setup.sh' or restore missing files" >&2
@@ -83,9 +83,9 @@ validate_core_configuration() {
 
     local errors=()
 
-    # Required core variables
+    # Required core variables - UPDATED for domain consolidation
     local required_vars=(
-        "DOMAIN:Domain configuration"
+        "VAULTWARDEN_DOMAIN:Domain configuration"
         "ADMIN_TOKEN:VaultWarden admin token"
         "ADMIN_EMAIL:Administrator email"
     )
@@ -104,9 +104,9 @@ validate_core_configuration() {
         errors+=("⚠️  ADMIN_TOKEN should be generated with: openssl rand -base64 32")
     fi
 
-    # Validate DOMAIN format
-    if [[ -n "${DOMAIN:-}" ]] && [[ ! "${DOMAIN}" =~ ^https?:// ]]; then
-        errors+=("❌ DOMAIN must start with http:// or https://")
+    # Validate VAULTWARDEN_DOMAIN format (should not have a protocol)
+    if [[ -n "${VAULTWARDEN_DOMAIN:-}" ]] && [[ "${VAULTWARDEN_DOMAIN}" =~ ^https?:// ]]; then
+        errors+=("❌ VAULTWARDEN_DOMAIN should not include http:// or https://")
     fi
 
     if [[ ${#errors[@]} -gt 0 ]]; then
@@ -622,8 +622,8 @@ show_status() {
         source "$COMPOSE_ENV_FILE"
         set +a
 
-        echo "🌐 Domain: ${APP_DOMAIN:-'Not configured'}"
-        echo "🔗 URL: ${DOMAIN:-'Not configured'}"
+        echo "🌐 Domain: ${VAULTWARDEN_DOMAIN:-'Not configured'}"
+        echo "🔗 URL: https://${VAULTWARDEN_DOMAIN:-'Not configured'}"
         echo "⚙️  Profiles: ${ACTIVE_PROFILES[*]:-'core only'}"
         echo "💾 SQLite DB: $SQLITE_DB_PATH"
 
@@ -771,7 +771,7 @@ EOF
         echo "3. Configure backup: Set BACKUP_REMOTE, BACKUP_PASSPHRASE, and run:"
         echo "   docker compose run --rm bw_backup rclone config"
     fi
-    echo "4. Access your vault at: ${DOMAIN:-https://vault.yourdomain.com}"
+    echo "4. Access your vault at: https://${VAULTWARDEN_DOMAIN:-vault.yourdomain.com}"
     echo "5. SQLite database location: $SQLITE_DB_PATH"
 }
 
