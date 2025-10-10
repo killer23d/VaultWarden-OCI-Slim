@@ -1,0 +1,6 @@
+# Example rclone crypt remote
+[crypt]
+type = crypt
+remote = remote:bucket/path
+password = REDACTED_PASSWORD
+password2 = REDACTED_SALT

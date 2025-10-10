@@ -1,0 +1,83 @@
+# Performance optimization for 10-user VaultWarden deployment
+services:
+  vaultwarden:
+    deploy:
+      resources:
+        limits:
+          cpus: "0.45"
+          memory: "384M"
+        reservations:
+          cpus: "0.25"
+          memory: "256M"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/alive || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+
+  bw_caddy:
+    deploy:
+      resources:
+        limits:
+          cpus: "0.15"
+          memory: "160M"
+        reservations:
+          cpus: "0.05"
+          memory: "96M"
+    healthcheck:
+      test: ["CMD-SHELL", "caddy validate --config /etc/caddy/Caddyfile || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  bw_backup:
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: "192M"
+        reservations:
+          cpus: "0.05"
+          memory: "96M"
+    environment:
+      - BACKUP_SCHEDULE=${BACKUP_SCHEDULE:-0 3 * * *}
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep crond >/dev/null || exit 1"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 1m
+
+  bw_fail2ban:
+    deploy:
+      resources:
+        limits:
+          cpus: "0.05"
+          memory: "96M"
+        reservations:
+          cpus: "0.02"
+          memory: "64M"
+
+  bw_watchtower:
+    deploy:
+      resources:
+        limits:
+          cpus: "0.05"
+          memory: "64M"
+        reservations:
+          cpus: "0.02"
+          memory: "32M"
+
+  bw_ddclient:
+    deploy:
+      resources:
+        limits:
+          cpus: "0.02"
+          memory: "48M"
+        reservations:
+          cpus: "0.01"
+          memory: "32M"

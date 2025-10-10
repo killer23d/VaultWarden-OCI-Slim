@@ -1,0 +1,8 @@
+[vaultwarden-admin]
+enabled = true
+filter = vaultwarden
+port = http,https
+logpath = /logs/access.log
+maxretry = 3
+findtime = 600
+bantime = 1800

@@ -1,0 +1,98 @@
+{
+    # ACME email for automatic TLS certificate management
+    email {$ADMIN_EMAIL}
+
+    # Trust CloudFlare proxy to derive real client IP from X-Forwarded-For
+    servers {
+        trusted_proxies {
+            import /etc/caddy/cloudflare_ips.caddy
+        }
+    }
+
+    # Reduce Caddy's internal log verbosity to save I/O on 1 OCPU
+    logging {
+        level WARN
+    }
+}
+
+{$APP_DOMAIN:vault.localhost} {
+    # Compression between CloudFlare and origin server
+    # Safe to enable - helps with bandwidth efficiency on OCI A1
+    encode zstd gzip
+
+    # Security headers (response headers sent to browser)
+    # NOTE: X-Real-IP is NOT set here (would leak client IP to browser)
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+        -X-Powered-By
+    }
+
+    # Health check endpoint for monitoring
+    @health path /health
+    handle @health {
+        header Cache-Control "no-store"
+        respond "OK" 200
+    }
+
+    # Static assets optimization (optional caching via Caddy)
+    @static path_regexp static \.(?:css|js|ico|png|jpe?g|gif|woff2?)$
+    handle @static {
+        header Cache-Control "public, max-age=86400"
+        reverse_proxy vaultwarden:80 {
+            header_up X-Real-IP {remote_host}
+        }
+    }
+
+    # Admin panel routing
+    handle /admin* {
+        reverse_proxy vaultwarden:80 {
+            header_up X-Real-IP {remote_host}
+        }
+    }
+
+    # WebSocket endpoint intentionally disabled for 1 OCPU optimization
+    # VaultWarden will fall back to polling mode (more CPU efficient)
+    handle /notifications/hub* {
+        respond "WebSocket disabled for this deployment" 410
+    }
+
+    # All other API and web vault routes
+    reverse_proxy vaultwarden:80 {
+        header_up X-Real-IP {remote_host}
+        transport http {
+            # Conservative timeouts for low-concurrency 1 OCPU host
+            response_header_timeout 30s
+            read_idle_timeout 30s
+            idle_timeout 2m
+        }
+    }
+
+    # Automatic TLS via Let's Encrypt (uses email from global config)
+    tls {$ADMIN_EMAIL}
+
+    # Access logging (ensure /logs directory exists and is writable)
+    log {
+        output file /logs/access.log
+        format single_field common_log
+    }
+}
+
+# VAULTWARDEN ADMIN HARDENING
+@admin path /admin*
+handle @admin {
+  # Uncomment to enable Basic Auth:
+  # basicauth {
+  #   {$BASIC_ADMIN_USER} {$BASIC_ADMIN_HASH}
+  # }
+  header {
+    -Server
+    -X-Powered-By
+  }
+  reverse_proxy vaultwarden:80 {
+    header_up X-Real-IP {remote_host}
+  }
+}

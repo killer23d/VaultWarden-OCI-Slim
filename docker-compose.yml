@@ -1,0 +1,297 @@
+version: "3.8"
+
+services:
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: vaultwarden
+    restart: unless-stopped
+    user: "${PUID:-1000}:${PGID:-1000}"
+    env_file:
+      # Use temp env from startup.sh if provided, else fallback to repo file
+      - ${COMPOSE_ENV_FILE:-./settings.env}
+    volumes:
+      - ./data/bwdata:/data:rw
+    networks:
+      - bw_net
+    healthcheck:
+      # Fixed: Support both curl and wget for different VaultWarden images
+      test: ["CMD-SHELL", "(command -v curl >/dev/null 2>&1 && curl -fsS http://127.0.0.1:80/alive) || (command -v wget >/dev/null 2>&1 && wget -qO- http://127.0.0.1:80/alive) || exit 1"]
+      interval: 5m
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.35'  # Reduced from 0.4 to fit within 1.0 CPU total
+        reservations:
+          memory: 128M
+          cpus: '0.175'  # Adjusted proportionally
+    environment:
+      # Fixed: Use environment variables instead of hardcoded values
+      - DATABASE_URL=${DATABASE_URL:-sqlite:////data/bwdata/db.sqlite3}
+      - ROCKET_WORKERS=${ROCKET_WORKERS:-1}
+      - WEBSOCKET_ENABLED=${WEBSOCKET_ENABLED:-false}
+      - EXTENDED_LOGGING=${EXTENDED_LOGGING:-true}
+      - LOG_LEVEL=${LOG_LEVEL:-warn}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+        labels: "service=vaultwarden"
+
+  bw_caddy:
+    image: caddy:2-alpine
+    container_name: bw_caddy
+    restart: unless-stopped
+    user: "${PUID:-1000}:${PGID:-1000}"
+    env_file:
+      - ${COMPOSE_ENV_FILE:-./settings.env}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./data/caddy_data:/data
+      - ./data/caddy_config:/config
+      - ./data/caddy_logs:/logs
+      - ./caddy/cloudflare_ips.caddy:/etc/caddy/cloudflare_ips.caddy:rw
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      vaultwarden:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "caddy validate --config /etc/caddy/Caddyfile || exit 1"]
+      interval: 10m
+      timeout: 15s
+      retries: 3
+      start_period: 45s
+    networks:
+      - bw_net
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.12'  # Reduced from 0.15 to fit within 1.0 CPU total
+        reservations:
+          memory: 64M
+          cpus: '0.06'   # Adjusted proportionally
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+        labels: "service=caddy"
+
+  bw_fail2ban:
+    image: lscr.io/linuxserver/fail2ban:latest
+    container_name: bw_fail2ban
+    restart: unless-stopped
+    env_file:
+      - ${COMPOSE_ENV_FILE:-./settings.env}
+    volumes:
+      - ./fail2ban/jail.d/jail.local:/config/jail.local:ro
+      - ./fail2ban/filter.d:/config/filter.d:ro
+      - ./caddy/cloudflare_ips.txt:/config/cloudflare_ips.txt:ro
+      - ./data/caddy_logs:/logs/caddy:ro
+      - ./data/bwdata:/logs/vaultwarden:ro
+      - ./data/fail2ban:/config:rw
+      - ./data/caddy_logs:/logs:ro
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - VERBOSITY=-vv
+    healthcheck:
+      test: ["CMD-SHELL", "fail2ban-client ping >/dev/null 2>&1 || exit 1"]
+      interval: 15m
+      timeout: 15s
+      retries: 3
+      start_period: 90s
+    networks:
+      - bw_net
+    depends_on:
+      bw_caddy:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: '0.08'   # Kept same
+        reservations:
+          memory: 32M
+          cpus: '0.04'   # Kept same
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+        labels: "service=fail2ban"
+    profiles:
+      - security
+
+  bw_ddclient:
+    image: lscr.io/linuxserver/ddclient:latest
+    container_name: bw_ddclient
+    restart: unless-stopped
+    env_file:
+      - ${COMPOSE_ENV_FILE:-./settings.env}
+    volumes:
+      - ./ddclient:/config:rw
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f ddclient >/dev/null || exit 1"]
+      interval: 60m
+      timeout: 15s
+      retries: 2
+      start_period: 60s
+    networks:
+      - bw_net
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+    deploy:
+      resources:
+        limits:
+          memory: 32M
+          cpus: '0.05'   # Kept same
+        reservations:
+          memory: 16M
+          cpus: '0.025'  # Kept same
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "25m"
+        max-file: "2"
+        labels: "service=ddclient"
+    profiles:
+      - dns
+
+  bw_backup:
+    build:
+      context: ./backup
+      dockerfile: Dockerfile
+    image: bitwarden_sqlite_backup:latest
+    container_name: bw_backup
+    restart: unless-stopped
+    user: "${PUID:-1000}:${PGID:-1000}"
+    env_file:
+      - ${COMPOSE_ENV_FILE:-./settings.env}
+    volumes:
+      - ./data/backups:/backups:rw
+      - ./data/backup_logs:/var/log/backup:rw
+      - ./backup/config:/home/backup/.config/rclone:rw
+      - ./data/bwdata:/data/bwdata:ro
+    networks:
+      - bw_net
+    depends_on:
+      vaultwarden:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep crond >/dev/null && test -w /backups || exit 1"]
+      interval: 60m
+      timeout: 15s
+      retries: 3
+      start_period: 120s
+    environment:
+      # Fixed: Use environment variables instead of hardcoded values
+      - BACKUP_DIR=/backups
+      - LOG_DIR=/var/log/backup
+      - RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-30}
+      - BACKUP_PASSPHRASE=${BACKUP_PASSPHRASE}
+      - BACKUP_REMOTE=${BACKUP_REMOTE:-}
+      - BACKUP_PATH=${BACKUP_PATH:-vaultwarden-backups}
+      - BACKUP_EMAIL=${BACKUP_EMAIL:-}
+      - DATABASE_TYPE=sqlite
+      - SQLITE_DB_PATH=/data/bwdata/db.sqlite3
+      - VAULTWARDEN_DATA_DIR=/data/bwdata
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.30'  # Reduced from 0.32 to fit within 1.0 CPU total
+        reservations:
+          memory: 64M
+          cpus: '0.15'   # Adjusted proportionally
+    profiles:
+      - backup
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+        labels: "service=sqlite-backup"
+
+  bw_watchtower:
+    image: containrrr/watchtower:latest
+    restart: unless-stopped
+    container_name: bw_watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_SCHEDULE=${WATCHTOWER_SCHEDULE:-0 0 3 * * 0}
+      - TZ=${TZ:-UTC}
+      - WATCHTOWER_NOTIFICATIONS_LEVEL=info
+      - WATCHTOWER_INCLUDE_STOPPED=false
+      - WATCHTOWER_REVIVE_STOPPED=false
+      - WATCHTOWER_LABEL_ENABLE=true
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    networks:
+      - bw_net
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: '0.10'   # Reduced from 0.11 to fit within 1.0 CPU total
+        reservations:
+          memory: 32M
+          cpus: '0.05'   # Adjusted proportionally
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "25m"
+        max-file: "2"
+        labels: "service=watchtower"
+    profiles:
+      - maintenance
+
+networks:
+  bw_net:
+    driver: bridge
+    name: vaultwarden_network
+
+# ==============================================
+# VaultWarden-OCI-Slim SQLite Configuration
+# Optimized for 1 OCPU/6GB OCI A1 Flex
+# ==============================================
+# 
+# Resource Allocation Summary (CORRECTED):
+# - VaultWarden: 0.35 CPU, 256MB RAM
+# - Caddy:       0.12 CPU, 128MB RAM  
+# - Fail2ban:    0.08 CPU, 64MB RAM
+# - Backup:      0.30 CPU, 128MB RAM
+# - Watchtower:  0.10 CPU, 64MB RAM
+# - DDClient:    0.05 CPU, 32MB RAM
+# Total:         1.00 CPU, 672MB RAM (FIXED: Now exactly 1.0 CPU)
+#
+# Key Optimizations:
+# ✓ Removed MariaDB container (saves 0.5 CPU, 1GB RAM)
+# ✓ Removed Redis container (saves 0.25 CPU, 256MB RAM)
+# ✓ Removed logrotate container (saves 0.1 CPU, 32MB RAM)
+# ✓ SQLite database (file-based, no server overhead)
+# ✓ Single worker process (ROCKET_WORKERS=1)
+# ✓ WebSocket disabled (polling mode for efficiency)
+# ✓ Weekly maintenance schedule
+# ✓ Robust healthchecks supporting different VaultWarden images
+# ✓ Environment variables used instead of hardcoded values
+#
+# Profile Usage Examples:
+# docker compose up -d                           # Core services only
+# docker compose --profile backup up -d         # Core + backup
+# docker compose --profile security up -d       # Core + fail2ban  
+# docker compose --profile dns up -d            # Core + ddclient
+# docker compose --profile maintenance up -d    # Core + watchtower
+# ./startup.sh                                  # Automatic profile selection
