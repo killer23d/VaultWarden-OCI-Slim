@@ -167,6 +167,67 @@ configure_backups() {
     fi
 }
 
+configure_admin_hardening() {
+    log_step "5. Admin Page Hardening (Optional but Recommended)"
+    log_info "This adds an extra username/password prompt before the Vaultwarden admin page."
+    read -p "Enable extra security for the admin page? (Y/n): " enable_hardening
+
+    if [[ ! "$enable_hardening" =~ ^[Nn]$ ]]; then
+        log_info "Setting up Basic Authentication for the admin panel..."
+
+        local current_user
+        current_user=$(get_current_value "BASIC_ADMIN_USER")
+        read -p "Enter a username for the admin prompt [admin]: " admin_user
+        admin_user=${admin_user:-${current_user:-admin}}
+
+        read -sp "Enter a password for this user (will not be stored in plaintext): " admin_pass; echo
+
+        if [[ -z "$admin_pass" ]]; then
+            log_error "Password cannot be empty. Aborting hardening setup."
+            return 1
+        fi
+
+        log_info "Temporarily starting Caddy to generate a secure password hash..."
+        docker compose up -d bw_caddy
+
+        until [[ "$(docker inspect -f '{{.State.Status}}' bw_caddy 2>/dev/null)" == "running" ]]; do
+            log_info "Waiting for Caddy container to start..."
+            sleep 2
+        done
+        sleep 5
+
+        local hashed_pass
+        hashed_pass=$(docker compose exec bw_caddy caddy hash-password --plaintext "$admin_pass" | tr -d '\r')
+
+        log_info "Stopping temporary Caddy container..."
+        docker compose down
+
+        if [[ -z "$hashed_pass" ]]; then
+            log_error "Failed to generate password hash. Please try again."
+            return 1
+        fi
+
+        grep -q "^BASIC_ADMIN_USER=" "$SETTINGS_FILE" || echo "BASIC_ADMIN_USER=" >> "$SETTINGS_FILE"
+        grep -q "^BASIC_ADMIN_HASH=" "$SETTINGS_FILE" || echo "BASIC_ADMIN_HASH=" >> "$SETTINGS_FILE"
+
+        update_setting "BASIC_ADMIN_USER" "$admin_user"
+        update_setting "BASIC_ADMIN_HASH" "$hashed_pass"
+        log_success "Secure credentials saved to settings.env."
+
+        local caddyfile="$REPO_ROOT/caddy/Caddyfile"
+        if grep -q "# basicauth" "$caddyfile"; then
+            sed -i -e '/# VAULTWARDEN ADMIN HARDENING/,/}/ s/# *\(basicauth\)/  \1/' \
+                   -e '/# VAULTWARDEN ADMIN HARDENING/,/}/ s/# *\({\|$\)/    \1/' \
+                   -e '/# VAULTWARDEN ADMIN HARDENING/,/}/ s/# *}/\  }/' "$caddyfile"
+            log_success "Admin hardening has been enabled in the Caddyfile."
+        else
+            log_info "Admin hardening already appears to be enabled in the Caddyfile."
+        fi
+    else
+        log_warning "Admin page hardening skipped."
+    fi
+}
+
 # --- Main Execution ---
 main() {
     cat << "EOF"
@@ -184,6 +245,7 @@ EOF
     configure_admin
     configure_smtp
     configure_backups
+    configure_admin_hardening
 
     cat << EOF
 
