@@ -1,88 +1,79 @@
 #!/usr/bin/env bash
-# alerts.sh -- Phase 3 Complete Consolidated Alert System
-# Complete framework integration: unified logging + standardized formatting
+# alerts.sh -- VaultWarden-OCI Alert System (Unified Configuration)
+# Uses centralized monitoring configuration from lib/monitoring-config.sh
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ==============================================================================
-# COMPLETE FRAMEWORK INTEGRATION (PHASE 3)
+# UNIFIED CONFIGURATION LOADING
 # ==============================================================================
 
+# Load core framework
 source "$SCRIPT_DIR/lib/common.sh" || {
     echo "ERROR: lib/common.sh is required for alerts system" >&2
     exit 1
 }
 
-# Phase 3: Complete framework loading with comprehensive logging
+# UNIFIED CONFIGURATION: Single source of truth
+source "$SCRIPT_DIR/lib/monitoring-config.sh" || {
+    echo "ERROR: lib/monitoring-config.sh required for unified configuration" >&2
+    exit 1
+}
+
+# Verify configuration loaded successfully
+if [[ "$MONITORING_CONFIG_LOADED" != "true" ]]; then
+    log_error "Monitoring configuration failed to load"
+    exit 1
+fi
+
+log_info "Using unified monitoring configuration v$MONITORING_CONFIG_VERSION"
+log_info "Configuration sources: $MONITORING_CONFIG_SOURCES"
+
+# Framework component tracking
 FRAMEWORK_COMPONENTS=()
 
-# Core performance and data collection
-if source "$SCRIPT_DIR/lib/perf-collector.sh"; then
+# Load framework components if available
+if source "$SCRIPT_DIR/lib/perf-collector.sh" 2>/dev/null; then
     perf_collector_init
     FRAMEWORK_COMPONENTS+=("perf-collector")
 fi
 
-if source "$SCRIPT_DIR/lib/dashboard-sqlite.sh"; then
+if source "$SCRIPT_DIR/lib/dashboard-sqlite.sh" 2>/dev/null; then
     dashboard_sqlite_init
     FRAMEWORK_COMPONENTS+=("dashboard-sqlite")
 fi
 
-if source "$SCRIPT_DIR/lib/dashboard-metrics.sh"; then
+if source "$SCRIPT_DIR/lib/dashboard-metrics.sh" 2>/dev/null; then
     FRAMEWORK_COMPONENTS+=("dashboard-metrics")
 fi
 
-# Phase 3: Complete logging framework integration
-if source "$SCRIPT_DIR/lib/logger.sh"; then
+if source "$SCRIPT_DIR/lib/logger.sh" 2>/dev/null; then
     logger_init
     FRAMEWORK_COMPONENTS+=("logger")
 
-    # Override all log functions to use framework
+    # Override logging functions to use framework
     log_info() { logger_info "alerts" "$*"; }
     log_success() { logger_info "alerts" "SUCCESS: $*"; }
     log_warning() { logger_warn "alerts" "$*"; }
     log_error() { logger_error "alerts" "$*"; }
     log_step() { logger_info "alerts" "STEP: $*"; }
     log_debug() { logger_debug "alerts" "$*"; }
-else
-    # Maintain fallback logging
-    log_warning "Enhanced logging framework not available - using basic logging"
 fi
 
-# Phase 3: Complete error handling integration
-if source "$SCRIPT_DIR/lib/error-handler.sh"; then
+if source "$SCRIPT_DIR/lib/error-handler.sh" 2>/dev/null; then
     error_handler_init
     FRAMEWORK_COMPONENTS+=("error-handler")
 fi
 
-# Phase 3: Complete output formatting integration
-if source "$SCRIPT_DIR/lib/perf-formatter.sh"; then
+if source "$SCRIPT_DIR/lib/perf-formatter.sh" 2>/dev/null; then
     perf_formatter_init
     FRAMEWORK_COMPONENTS+=("perf-formatter")
 fi
 
-# Load all threshold configurations (Phase 3 complete externalization)
-[[ -f "$SCRIPT_DIR/config/performance-targets.conf" ]] && source "$SCRIPT_DIR/config/performance-targets.conf"
-[[ -f "$SCRIPT_DIR/config/alert-thresholds.conf" ]] && source "$SCRIPT_DIR/config/alert-thresholds.conf"
-[[ -f "$SCRIPT_DIR/config/monitoring-intervals.conf" ]] && source "$SCRIPT_DIR/config/monitoring-intervals.conf"
-
-# Comprehensive defaults (Phase 3 compatibility)
-CPU_CRITICAL_THRESHOLD=${CPU_CRITICAL_THRESHOLD:-90}
-MEMORY_CRITICAL_THRESHOLD=${MEMORY_CRITICAL_THRESHOLD:-85}
-LOAD_CRITICAL_THRESHOLD=${LOAD_CRITICAL_THRESHOLD:-1.5}
-DISK_CRITICAL_THRESHOLD=${DISK_CRITICAL_THRESHOLD:-85}
-SQLITE_SIZE_CRITICAL_MB=${SQLITE_SIZE_CRITICAL_MB:-500}
-SQLITE_WAL_CRITICAL_MB=${SQLITE_WAL_CRITICAL_MB:-50}
-SQLITE_FRAGMENTATION_CRITICAL=${SQLITE_FRAGMENTATION_CRITICAL:-1.5}
-FAIL2BAN_BANNED_CRITICAL=${FAIL2BAN_BANNED_CRITICAL:-25}
-ALERT_MIN_INTERVAL_S=${ALERT_MIN_INTERVAL_S:-1800}
-
-SETTINGS_FILE="${SCRIPT_DIR}/settings.env"
-SQLITE_DB_PATH=/data/bwdata/db.sqlite3
-
 # ==============================================================================
-# PHASE 3: COMPLETE DEPENDENCY MANAGEMENT
+# DEPENDENCY MANAGEMENT
 # ==============================================================================
 check_dependencies() {
     local missing_deps=()
@@ -91,7 +82,7 @@ check_dependencies() {
 
     log_step "Checking system dependencies"
 
-    # Check required dependencies with framework error handling
+    # Check required dependencies
     for dep in "${required_deps[@]}"; do
         if ! command -v "$dep" &> /dev/null; then
             missing_deps+=("$dep")
@@ -99,18 +90,14 @@ check_dependencies() {
     done
 
     if [ ${#missing_deps[@]} -ne 0 ]; then
-        if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " error-handler " ]]; then
-            error_handler_handle "DEPENDENCY" "Missing required dependencies: ${missing_deps[*]}" "abort"
-        else
-            log_error "Missing required dependencies: ${missing_deps[*]}"
-            log_error "Install with: sudo apt-get install postfix jq"
-            exit 1
-        fi
+        log_error "Missing required dependencies: ${missing_deps[*]}"
+        log_error "Install with: sudo apt-get install postfix jq"
+        exit 1
     else
         log_success "All required dependencies available"
     fi
 
-    # Check optional dependencies with framework logging
+    # Check optional dependencies
     for dep in "${optional_deps[@]}"; do
         if command -v "$dep" &> /dev/null; then
             log_debug "Optional dependency available: $dep"
@@ -121,96 +108,86 @@ check_dependencies() {
 }
 
 # ==============================================================================
-# PHASE 3: FRAMEWORK-UNIFIED SYSTEM CHECKS
+# UNIFIED SYSTEM RESOURCE CHECKS
 # ==============================================================================
-check_system_resources_complete() {
+check_system_resources_unified() {
     local alerts=()
 
-    log_debug "Performing system resource checks using complete framework integration"
+    log_debug "Performing system resource checks using unified configuration"
 
-    # Get system metrics using framework (Phase 3 complete integration)
+    # Get system metrics using unified collection
     local system_metrics
     if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " perf-collector " ]]; then
         system_metrics=$(perf_collector_system_full)
         log_debug "System metrics collected via framework with caching"
     else
-        system_metrics=$(get_system_metrics_basic_fallback)
-        log_debug "System metrics collected via fallback method"
+        system_metrics=$(get_unified_system_metrics)
+        log_debug "System metrics collected via unified fallback method"
     fi
 
     # Parse metrics for analysis
     local cpu_usage mem_usage_pct load_1m disk_usage_pct
-    eval "$(echo "$system_metrics" | grep -E '^(cpu_usage|mem_usage_pct|load_1m|disk_usage_pct)=')"
+    local cpu_status mem_status load_status disk_status
+    eval "$system_metrics"
 
-    # CPU Usage Analysis with framework threshold evaluation
-    if command -v bc >/dev/null 2>&1 && (( $(echo "$cpu_usage > $CPU_CRITICAL_THRESHOLD" | bc -l) )); then
-        if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " perf-formatter " ]]; then
-            alerts+=("$(perf_formatter_alert_row "⚠️ High CPU Usage" "${cpu_usage}% (threshold: ${CPU_CRITICAL_THRESHOLD}%)" "critical")")
-        else
-            alerts+=("<tr><td>⚠️ High CPU Usage</td><td style='color:red;'>${cpu_usage}% (threshold: ${CPU_CRITICAL_THRESHOLD}%)</td></tr>")
-        fi
+    # Use unified threshold evaluation functions
+    cpu_status=$(evaluate_cpu_threshold "$cpu_usage")
+    mem_status=$(evaluate_memory_threshold "$mem_usage_pct")
+    load_status=$(evaluate_load_threshold "$load_1m")
+    disk_status=$(evaluate_disk_threshold "$disk_usage_pct")
 
-        log_error "Critical CPU usage detected: ${cpu_usage}% (threshold: ${CPU_CRITICAL_THRESHOLD}%)"
-    else
-        log_debug "CPU usage acceptable: ${cpu_usage}%"
-    fi
+    # Generate alerts based on unified evaluation
+    case "$cpu_status" in
+        "critical")
+            alerts+=("<tr><td>⚠️ Critical CPU Usage</td><td style='color:red;'>${cpu_usage}% (threshold: ${CPU_CRITICAL_THRESHOLD}%)</td></tr>")
+            log_error "Critical CPU usage detected: ${cpu_usage}% (threshold: ${CPU_CRITICAL_THRESHOLD}%)"
+            ;;
+        "alert")
+            alerts+=("<tr><td>⚠️ High CPU Usage</td><td style='color:orange;'>${cpu_usage}% (threshold: ${CPU_ALERT_THRESHOLD}%)</td></tr>")
+            log_warning "High CPU usage detected: ${cpu_usage}% (threshold: ${CPU_ALERT_THRESHOLD}%)"
+            ;;
+    esac
 
-    # Memory Usage Analysis
-    if command -v bc >/dev/null 2>&1 && (( $(echo "$mem_usage_pct > $MEMORY_CRITICAL_THRESHOLD" | bc -l) )); then
-        if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " perf-formatter " ]]; then
-            alerts+=("$(perf_formatter_alert_row "⚠️ High Memory Usage" "${mem_usage_pct}% (threshold: ${MEMORY_CRITICAL_THRESHOLD}%)" "critical")")
-        else
-            alerts+=("<tr><td>⚠️ High Memory Usage</td><td style='color:red;'>${mem_usage_pct}% (threshold: ${MEMORY_CRITICAL_THRESHOLD}%)</td></tr>")
-        fi
+    case "$mem_status" in
+        "critical")
+            alerts+=("<tr><td>⚠️ Critical Memory Usage</td><td style='color:red;'>${mem_usage_pct}% (threshold: ${MEMORY_CRITICAL_THRESHOLD}%)</td></tr>")
+            log_error "Critical memory usage detected: ${mem_usage_pct}% (threshold: ${MEMORY_CRITICAL_THRESHOLD}%)"
+            ;;
+        "alert")
+            alerts+=("<tr><td>⚠️ High Memory Usage</td><td style='color:orange;'>${mem_usage_pct}% (threshold: ${MEMORY_ALERT_THRESHOLD}%)</td></tr>")
+            log_warning "High memory usage detected: ${mem_usage_pct}% (threshold: ${MEMORY_ALERT_THRESHOLD}%)"
+            ;;
+    esac
 
-        log_error "Critical memory usage detected: ${mem_usage_pct}% (threshold: ${MEMORY_CRITICAL_THRESHOLD}%)"
-    else
-        log_debug "Memory usage acceptable: ${mem_usage_pct}%"
-    fi
+    case "$load_status" in
+        "critical")
+            alerts+=("<tr><td>🔥 Critical Load Average</td><td style='color:red;'>${load_1m} (threshold: ${LOAD_CRITICAL_THRESHOLD} for 1 OCPU)</td></tr>")
+            log_error "Critical load average for 1 OCPU: ${load_1m} (threshold: ${LOAD_CRITICAL_THRESHOLD})"
+            ;;
+        "alert")
+            alerts+=("<tr><td>🔥 High Load Average</td><td style='color:orange;'>${load_1m} (threshold: ${LOAD_ALERT_THRESHOLD} for 1 OCPU)</td></tr>")
+            log_warning "High load average for 1 OCPU: ${load_1m} (threshold: ${LOAD_ALERT_THRESHOLD})"
+            ;;
+    esac
 
-    # Load Average Analysis (critical for 1 OCPU) 
-    if command -v bc >/dev/null 2>&1 && (( $(echo "$load_1m > $LOAD_CRITICAL_THRESHOLD" | bc -l) )); then
-        if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " perf-formatter " ]]; then
-            alerts+=("$(perf_formatter_alert_row "🔥 High Load Average" "${load_1m} (threshold: ${LOAD_CRITICAL_THRESHOLD} for 1 OCPU)" "critical")")
-        else
-            alerts+=("<tr><td>🔥 High Load Average</td><td style='color:red;'>${load_1m} (threshold: ${LOAD_CRITICAL_THRESHOLD} for 1 OCPU)</td></tr>")
-        fi
-
-        log_error "Critical load average for 1 OCPU: ${load_1m} (threshold: ${LOAD_CRITICAL_THRESHOLD})"
-    else
-        log_debug "Load average acceptable for 1 OCPU: ${load_1m}"
-    fi
-
-    # Disk Usage Analysis
-    if [[ ${disk_usage_pct:-0} -gt ${DISK_CRITICAL_THRESHOLD} ]]; then
-        if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " perf-formatter " ]]; then
-            alerts+=("$(perf_formatter_alert_row "💾 High Disk Usage" "${disk_usage_pct}% (threshold: ${DISK_CRITICAL_THRESHOLD}%)" "critical")")
-        else
-            alerts+=("<tr><td>💾 High Disk Usage</td><td style='color:red;'>${disk_usage_pct}% (threshold: ${DISK_CRITICAL_THRESHOLD}%)</td></tr>")
-        fi
-
-        log_error "Critical disk usage detected: ${disk_usage_pct}% (threshold: ${DISK_CRITICAL_THRESHOLD}%)"
-    else
-        log_debug "Disk usage acceptable: ${disk_usage_pct}%"
-    fi
+    case "$disk_status" in
+        "critical")
+            alerts+=("<tr><td>💾 Critical Disk Usage</td><td style='color:red;'>${disk_usage_pct}% (threshold: ${DISK_CRITICAL_THRESHOLD}%)</td></tr>")
+            log_error "Critical disk usage detected: ${disk_usage_pct}% (threshold: ${DISK_CRITICAL_THRESHOLD}%)"
+            ;;
+        "alert")
+            alerts+=("<tr><td>💾 High Disk Usage</td><td style='color:orange;'>${disk_usage_pct}% (threshold: ${DISK_ALERT_THRESHOLD}%)</td></tr>")
+            log_warning "High disk usage detected: ${disk_usage_pct}% (threshold: ${DISK_ALERT_THRESHOLD}%)"
+            ;;
+    esac
 
     printf '%s\n' "${alerts[@]}"
 }
 
-# Basic system metrics fallback
-get_system_metrics_basic_fallback() {
-    cat <<EOF
-cpu_usage=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1 || echo "0")
-mem_usage_pct=$(free | awk '/^Mem:/{printf "%.1f", $3*100/$2}' || echo "0")
-load_1m=$(uptime | awk -F'load average:' '{print $2}' | awk '{print $1}' | tr -d ',' || echo "0")
-disk_usage_pct=$(df . | awk 'NR==2 {print $5}' | sed 's/%//' || echo "0")
-EOF
-}
-
 # ==============================================================================
-# PHASE 3: COMPLETE SQLITE MONITORING INTEGRATION
+# UNIFIED SQLITE MONITORING
 # ==============================================================================
-check_sqlite_database_complete() {
+check_sqlite_database_unified() {
     local alerts=()
 
     # Skip if database doesn't exist
@@ -219,145 +196,126 @@ check_sqlite_database_complete() {
         return 0
     fi
 
-    log_debug "Performing SQLite database checks using complete framework integration"
+    log_debug "Performing SQLite database checks using unified configuration"
 
-    # Use complete framework SQLite monitoring (Phase 3)
+    # Use framework SQLite monitoring if available
     if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " dashboard-sqlite " ]]; then
         local sqlite_status sqlite_metrics
-
-        # Enhanced framework execution with error handling
-        if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " error-handler " ]]; then
-            sqlite_status=$(error_handler_safe_execute "sqlite_status" dashboard_sqlite_get_status)
-            sqlite_metrics=$(error_handler_safe_execute "sqlite_metrics" dashboard_sqlite_get_detailed_metrics)
-        else
-            sqlite_status=$(dashboard_sqlite_get_status)
-            sqlite_metrics=$(dashboard_sqlite_get_detailed_metrics || echo "available=false")
-        fi
+        sqlite_status=$(dashboard_sqlite_get_status)
+        sqlite_metrics=$(dashboard_sqlite_get_detailed_metrics || echo "available=false")
 
         if [[ "$sqlite_status" =~ status=accessible ]] && [[ "$sqlite_metrics" =~ available=true ]]; then
-            log_debug "SQLite framework analysis completed successfully"
+            log_debug "SQLite framework analysis completed successfully")
 
-            # Parse comprehensive framework results
+            # Parse framework results
             local file_size_mb wal_size_mb fragmentation_ratio health
             eval "$(echo "$sqlite_metrics" | grep -E '^(file_size_mb|wal_size_mb|fragmentation_ratio)=')"
             eval "$(echo "$sqlite_status" | grep -E '^health=')"
 
             # Database health evaluation
             if [[ "$health" != "healthy" ]]; then
-                if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " perf-formatter " ]]; then
-                    alerts+=("$(perf_formatter_alert_row "🚨 SQLite Database Health" "Health check failed: $health" "critical")")
-                else
-                    alerts+=("<tr><td>🚨 SQLite Database Health</td><td style='color:red;'>Health check failed: $health</td></tr>")
-                fi
-
+                alerts+=("<tr><td>🚨 SQLite Database Health</td><td style='color:red;'>Health check failed: $health</td></tr>")
                 log_error "SQLite database health issue detected: $health"
-            else
-                log_debug "SQLite database health check passed"
             fi
 
-            # Size analysis with framework thresholds
-            if command -v bc >/dev/null 2>&1 && (( $(echo "$file_size_mb > $SQLITE_SIZE_CRITICAL_MB" | bc -l) )); then
-                if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " perf-formatter " ]]; then
-                    alerts+=("$(perf_formatter_alert_row "📊 Large SQLite Database" "${file_size_mb}MB (threshold: ${SQLITE_SIZE_CRITICAL_MB}MB)" "warning")")
+            # Use unified threshold evaluation functions
+            local size_status wal_status frag_status
+            size_status=$(evaluate_sqlite_size_threshold "$file_size_mb")
+            wal_status=$(evaluate_sqlite_size_threshold "$wal_size_mb")  # Using same function for WAL
+            frag_status=$(evaluate_fragmentation_threshold "$fragmentation_ratio")
+
+            # Generate alerts based on unified evaluation
+            case "$size_status" in
+                "critical")
+                    alerts+=("<tr><td>📊 Critical SQLite Database</td><td style='color:red;'>${file_size_mb}MB (threshold: ${SQLITE_SIZE_CRITICAL_MB}MB)</td></tr>")
+                    log_error "Critical SQLite database size: ${file_size_mb}MB"
+                    ;;
+                "alert")
+                    alerts+=("<tr><td>📊 Large SQLite Database</td><td style='color:orange;'>${file_size_mb}MB (threshold: ${SQLITE_SIZE_ALERT_MB}MB)</td></tr>")
+                    log_warning "Large SQLite database detected: ${file_size_mb}MB"
+                    ;;
+            esac
+
+            # WAL file analysis using unified thresholds
+            if command -v bc >/dev/null 2>&1 && (( $(echo "$wal_size_mb > $WAL_SIZE_ALERT_MB" | bc -l) )); then
+                if (( $(echo "$wal_size_mb > $WAL_SIZE_CRITICAL_MB" | bc -l) )); then
+                    alerts+=("<tr><td>📝 Critical WAL File</td><td style='color:red;'>${wal_size_mb}MB (threshold: ${WAL_SIZE_CRITICAL_MB}MB)</td></tr>")
+                    log_error "Critical SQLite WAL file size: ${wal_size_mb}MB"
                 else
-                    alerts+=("<tr><td>📊 Large SQLite Database</td><td style='color:orange;'>${file_size_mb}MB (threshold: ${SQLITE_SIZE_CRITICAL_MB}MB)</td></tr>")
+                    alerts+=("<tr><td>📝 Large WAL File</td><td style='color:orange;'>${wal_size_mb}MB (threshold: ${WAL_SIZE_ALERT_MB}MB)</td></tr>")
+                    log_warning "Large SQLite WAL file detected: ${wal_size_mb}MB"
                 fi
-
-                log_warning "Large SQLite database detected: ${file_size_mb}MB (threshold: ${SQLITE_SIZE_CRITICAL_MB}MB)"
-            else
-                log_debug "SQLite database size acceptable: ${file_size_mb}MB"
             fi
 
-            # WAL file analysis
-            if command -v bc >/dev/null 2>&1 && (( $(echo "$wal_size_mb > $SQLITE_WAL_CRITICAL_MB" | bc -l) )); then
-                if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " perf-formatter " ]]; then
-                    alerts+=("$(perf_formatter_alert_row "📝 Large WAL File" "${wal_size_mb}MB (threshold: ${SQLITE_WAL_CRITICAL_MB}MB)" "warning")")
-                else
-                    alerts+=("<tr><td>📝 Large WAL File</td><td style='color:orange;'>${wal_size_mb}MB (consider maintenance)</td></tr>")
-                fi
-
-                log_warning "Large SQLite WAL file detected: ${wal_size_mb}MB"
-            else
-                log_debug "SQLite WAL file size acceptable: ${wal_size_mb}MB"
-            fi
-
-            # Fragmentation analysis
-            if command -v bc >/dev/null 2>&1 && (( $(echo "$fragmentation_ratio > $SQLITE_FRAGMENTATION_CRITICAL" | bc -l) )); then
-                if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " perf-formatter " ]]; then
-                    alerts+=("$(perf_formatter_alert_row "🗂️ Database Fragmentation" "Ratio: $fragmentation_ratio (consider VACUUM)" "warning")")
-                else
-                    alerts+=("<tr><td>🗂️ Database Fragmentation</td><td style='color:orange;'>Ratio: $fragmentation_ratio (consider VACUUM)</td></tr>")
-                fi
-
-                log_warning "SQLite fragmentation detected: $fragmentation_ratio"
-            else
-                log_debug "SQLite fragmentation acceptable: $fragmentation_ratio"
-            fi
+            # Fragmentation analysis using unified thresholds
+            case "$frag_status" in
+                "critical")
+                    alerts+=("<tr><td>🗂️ Critical Database Fragmentation</td><td style='color:red;'>Ratio: $fragmentation_ratio (threshold: $FRAGMENTATION_CRITICAL_RATIO)</td></tr>")
+                    log_error "Critical SQLite fragmentation: $fragmentation_ratio"
+                    ;;
+                "alert")
+                    alerts+=("<tr><td>🗂️ Database Fragmentation</td><td style='color:orange;'>Ratio: $fragmentation_ratio (threshold: $FRAGMENTATION_ALERT_RATIO)</td></tr>")
+                    log_warning "SQLite fragmentation detected: $fragmentation_ratio"
+                    ;;
+            esac
 
         else
             log_error "SQLite database is not accessible or framework metrics failed"
-
-            if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " perf-formatter " ]]; then
-                alerts+=("$(perf_formatter_alert_row "🚨 SQLite Database" "Database not accessible" "critical")")
-            else
-                alerts+=("<tr><td>🚨 SQLite Database</td><td style='color:red;'>Database not accessible</td></tr>")
-            fi
+            alerts+=("<tr><td>🚨 SQLite Database</td><td style='color:red;'>Database not accessible</td></tr>")
         fi
 
     else
-        # Fallback SQLite monitoring (Phase 3 enhanced)
-        log_debug "Using fallback SQLite monitoring with enhanced error handling"
-        alerts+=($(check_sqlite_database_enhanced_fallback))
+        # Enhanced fallback SQLite monitoring
+        log_debug "Using enhanced fallback SQLite monitoring with unified thresholds"
+        alerts+=($(check_sqlite_database_fallback))
     fi
 
     printf '%s\n' "${alerts[@]}"
 }
 
-# Enhanced fallback SQLite checks (Phase 3)
-check_sqlite_database_enhanced_fallback() {
+# Enhanced fallback SQLite checks using unified thresholds
+check_sqlite_database_fallback() {
     local alerts=()
 
-    # Enhanced database accessibility check
-    if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " error-handler " ]]; then
-        if ! error_handler_safe_execute "sqlite_access" sqlite3 "$SQLITE_DB_PATH" "SELECT 1;" >/dev/null; then
-            alerts+=("<tr><td>🚨 SQLite Access</td><td style='color:red;'>Database not accessible</td></tr>")
-            return
-        fi
-    else
-        if ! sqlite3 "$SQLITE_DB_PATH" "SELECT 1;" >/dev/null 2>&1; then
-            alerts+=("<tr><td>🚨 SQLite Access</td><td style='color:red;'>Database not accessible</td></tr>")
-            return
-        fi
+    # Database accessibility check
+    if ! sqlite3 "$SQLITE_DB_PATH" "SELECT 1;" >/dev/null 2>&1; then
+        alerts+=("<tr><td>🚨 SQLite Access</td><td style='color:red;'>Database not accessible</td></tr>")
+        return
     fi
 
-    # Enhanced size check
+    # Size check using unified thresholds
     if command -v bc >/dev/null 2>&1; then
         local db_size_mb
         db_size_mb=$(du -m "$SQLITE_DB_PATH" | cut -f1)
-        if (( $(echo "$db_size_mb > $SQLITE_SIZE_CRITICAL_MB" | bc -l) )); then
-            alerts+=("<tr><td>📊 Large Database</td><td style='color:orange;'>${db_size_mb}MB > ${SQLITE_SIZE_CRITICAL_MB}MB</td></tr>")
-        fi
+        local size_status
+        size_status=$(evaluate_sqlite_size_threshold "$db_size_mb")
+
+        case "$size_status" in
+            "critical")
+                alerts+=("<tr><td>📊 Critical Database Size</td><td style='color:red;'>${db_size_mb}MB (>${SQLITE_SIZE_CRITICAL_MB}MB)</td></tr>")
+                ;;
+            "alert")
+                alerts+=("<tr><td>📊 Large Database</td><td style='color:orange;'>${db_size_mb}MB (>${SQLITE_SIZE_ALERT_MB}MB)</td></tr>")
+                ;;
+        esac
     fi
 
-    # Enhanced integrity check with framework error handling
+    # Integrity check
     local integrity_result
-    if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " error-handler " ]]; then
-        integrity_result=$(error_handler_safe_execute "sqlite_integrity" sqlite3 "$SQLITE_DB_PATH" "PRAGMA integrity_check;")
-    else
-        integrity_result=$(sqlite3 "$SQLITE_DB_PATH" "PRAGMA integrity_check;" || echo "failed")
-    fi
-
+    integrity_result=$(sqlite3 "$SQLITE_DB_PATH" "PRAGMA integrity_check;" || echo "failed")
     if [[ "$integrity_result" != "ok" ]]; then
         alerts+=("<tr><td>🚨 SQLite Integrity</td><td style='color:red;'>Check failed</td></tr>")
     fi
 
-    # Enhanced WAL file check
+    # WAL file check using unified thresholds
     local wal_file="${SQLITE_DB_PATH}-wal"
     if [[ -f "$wal_file" ]] && command -v bc >/dev/null 2>&1; then
         local wal_size_mb
         wal_size_mb=$(du -m "$wal_file" | cut -f1)
-        if (( $(echo "$wal_size_mb > $SQLITE_WAL_CRITICAL_MB" | bc -l) )); then
-            alerts+=("<tr><td>📝 Large WAL</td><td style='color:orange;'>${wal_size_mb}MB > ${SQLITE_WAL_CRITICAL_MB}MB</td></tr>")
+        if (( $(echo "$wal_size_mb > $WAL_SIZE_CRITICAL_MB" | bc -l) )); then
+            alerts+=("<tr><td>📝 Critical WAL Size</td><td style='color:red;'>${wal_size_mb}MB (>${WAL_SIZE_CRITICAL_MB}MB)</td></tr>")
+        elif (( $(echo "$wal_size_mb > $WAL_SIZE_ALERT_MB" | bc -l) )); then
+            alerts+=("<tr><td>📝 Large WAL</td><td style='color:orange;'>${wal_size_mb}MB (>${WAL_SIZE_ALERT_MB}MB)</td></tr>")
         fi
     fi
 
@@ -365,15 +323,15 @@ check_sqlite_database_enhanced_fallback() {
 }
 
 # ==============================================================================
-# PHASE 3: COMPLETE CONTAINER MANAGEMENT INTEGRATION
+# UNIFIED CONTAINER MONITORING
 # ==============================================================================
-get_container_status_complete() {
+get_container_status_unified() {
     local container_report=""
     local alert_triggered=false
 
-    log_debug "Performing container status checks using complete framework integration"
+    log_debug "Performing container status checks using unified configuration"
 
-    # Container name mapping with framework formatting support
+    # Container name mapping
     declare -A container_display_names=(
         ["vaultwarden"]="🔐 VaultWarden Core"
         ["bw_caddy"]="🌐 Caddy Proxy" 
@@ -381,21 +339,16 @@ get_container_status_complete() {
         ["bw_backup"]="💾 Backup Service"
         ["bw_watchtower"]="🔄 Watchtower"
         ["bw_ddclient"]="🌐 DD Client"
+        ["bw_monitoring"]="📊 Monitoring"
     )
 
-    # Use complete framework container monitoring (Phase 3)
+    # Use framework container monitoring if available
     if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " dashboard-metrics " ]]; then
         local container_metrics
-
-        # Enhanced framework execution with error handling
-        if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " error-handler " ]]; then
-            container_metrics=$(error_handler_safe_execute "container_metrics" dashboard_get_container_metrics)
-        else
-            container_metrics=$(dashboard_get_container_metrics)
-        fi
+        container_metrics=$(dashboard_get_container_metrics)
 
         if [[ "$container_metrics" =~ docker_available=true ]]; then
-            log_debug "Container metrics collected via complete framework integration"
+            log_debug "Container metrics collected via framework integration"
 
             # Parse framework container results
             local containers_running containers_total
@@ -403,8 +356,8 @@ get_container_status_complete() {
 
             log_info "Container status: ${containers_running}/${containers_total} running"
 
-            # Process each expected container with framework formatting
-            local expected_containers=("vaultwarden" "bw_caddy" "bw_fail2ban" "bw_backup" "bw_watchtower" "bw_ddclient")
+            # Process each expected container
+            local expected_containers=("vaultwarden" "bw_caddy" "bw_fail2ban" "bw_backup" "bw_watchtower" "bw_ddclient" "bw_monitoring")
 
             for container in "${expected_containers[@]}"; do
                 local service_status service_health
@@ -421,18 +374,15 @@ get_container_status_complete() {
                             "healthy"|"no-health-check"|"no_healthcheck")
                                 color="green"
                                 status_icon="✅"
-                                log_debug "Container healthy: $container"
                                 ;;
                             "starting")
                                 color="orange"
                                 status_icon="🔄"
-                                log_info "Container starting: $container"
                                 ;;
                             "unhealthy")
                                 color="red"
                                 status_icon="❌"
                                 needs_alert=true
-                                log_error "Container unhealthy: $container"
                                 ;;
                         esac
                         ;;
@@ -442,24 +392,16 @@ get_container_status_complete() {
                         # Only alert for critical services
                         if [[ "$container" =~ ^(vaultwarden|bw_caddy)$ ]]; then
                             needs_alert=true
-                            log_error "Critical container stopped: $container"
-                        else
-                            log_warning "Optional container stopped: $container"
                         fi
                         ;;
                     "not_found")
                         color="gray"
                         status_icon="➖"
-                        log_debug "Container not configured: $container"
                         ;;
                 esac
 
-                # Generate table row with framework formatting if available
-                if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " perf-formatter " ]]; then
-                    container_report+="$(perf_formatter_container_status_row "${container_display_names[$container]:-$container}" "$status_icon $service_status" "$service_health" "$color")"
-                else
-                    container_report+="<tr><td>${container_display_names[$container]:-$container}</td><td style='color:$color;'>$status_icon $service_status</td><td style='color:$color;'>$service_health</td></tr>"
-                fi
+                # Generate table row
+                container_report+="<tr><td>${container_display_names[$container]:-$container}</td><td style='color:$color;'>$status_icon $service_status</td><td style='color:$color;'>$service_health</td></tr>"
 
                 # Track alert status
                 if [[ "$needs_alert" == "true" ]]; then
@@ -469,18 +411,14 @@ get_container_status_complete() {
 
         else
             log_error "Docker system not available via framework"
-            if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " perf-formatter " ]]; then
-                container_report="$(perf_formatter_container_status_row "Docker System" "❌ Not Available" "N/A" "red")"
-            else
-                container_report="<tr><td>Docker System</td><td style='color:red;'>❌ Not Available</td><td>N/A</td></tr>"
-            fi
+            container_report="<tr><td>Docker System</td><td style='color:red;'>❌ Not Available</td><td>N/A</td></tr>"
             alert_triggered=true
         fi
 
     else
-        # Enhanced fallback container monitoring (Phase 3)
+        # Enhanced fallback container monitoring
         log_debug "Using enhanced fallback container monitoring"
-        container_report=$(get_container_status_enhanced_fallback)
+        container_report=$(get_container_status_fallback)
 
         # Check for alerts in fallback mode
         if echo "$container_report" | grep -q "❌"; then
@@ -492,9 +430,9 @@ get_container_status_complete() {
     echo "alert_triggered=$alert_triggered"
 }
 
-# Enhanced fallback container monitoring (Phase 3)
-get_container_status_enhanced_fallback() {
-    local containers=("vaultwarden" "bw_caddy" "bw_fail2ban" "bw_backup" "bw_watchtower" "bw_ddclient")
+# Fallback container monitoring
+get_container_status_fallback() {
+    local containers=("vaultwarden" "bw_caddy" "bw_fail2ban" "bw_backup" "bw_watchtower" "bw_ddclient" "bw_monitoring")
     local container_report=""
 
     declare -A container_display_names=(
@@ -504,18 +442,15 @@ get_container_status_enhanced_fallback() {
         ["bw_backup"]="💾 Backup Service"
         ["bw_watchtower"]="🔄 Watchtower"
         ["bw_ddclient"]="🌐 DD Client"
+        ["bw_monitoring"]="📊 Monitoring"
     )
 
     for container in "${containers[@]}"; do
-        local status_json color="gray" status_icon="➖" service_status="not_found" service_health="N/A"
+        local color="gray" status_icon="➖" service_status="not_found" service_health="N/A"
 
         if command -v docker >/dev/null 2>&1; then
-            # Enhanced error handling for Docker operations
-            if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " error-handler " ]]; then
-                status_json=$(error_handler_safe_execute "docker_inspect" docker inspect "$container" || echo "[]")
-            else
-                status_json=$(docker inspect "$container" || echo "[]")
-            fi
+            local status_json
+            status_json=$(docker inspect "$container" 2>/dev/null || echo "[]")
 
             if [[ "$status_json" != "[]" ]] && command -v jq >/dev/null 2>&1; then
                 service_status=$(echo "$status_json" | jq -r '.[0].State.Status' || echo "unknown")
@@ -547,50 +482,35 @@ get_container_status_enhanced_fallback() {
         fi
 
         # Generate formatted row
-        if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " perf-formatter " ]]; then
-            container_report+="$(perf_formatter_container_status_row "${container_display_names[$container]:-$container}" "$status_icon $service_status" "$service_health" "$color")"
-        else
-            container_report+="<tr><td>${container_display_names[$container]:-$container}</td><td style='color:$color;'>$status_icon $service_status</td><td style='color:$color;'>$service_health</td></tr>"
-        fi
+        container_report+="<tr><td>${container_display_names[$container]:-$container}</td><td style='color:$color;'>$status_icon $service_status</td><td style='color:$color;'>$service_health</td></tr>"
     done
 
     echo "$container_report"
 }
 
 # ==============================================================================
-# PHASE 3: ENHANCED EMAIL GENERATION WITH COMPLETE FORMATTING
+# UNIFIED EMAIL GENERATION
 # ==============================================================================
-generate_complete_status_email() {
+generate_status_email_unified() {
     local test_mode="$1"
     local docker_host_ip
     docker_host_ip=$(hostname -I | awk '{print $1}')
 
-    log_step "Generating complete status email with framework formatting"
+    log_step "Generating status email with unified configuration"
 
-    # Collect all status information using complete framework integration
+    # Collect all status information using unified configuration
     local container_info system_alerts sqlite_alerts
-
-    if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " error-handler " ]]; then
-        container_info=$(error_handler_safe_execute "container_check" get_container_status_complete)
-        system_alerts=$(error_handler_safe_execute "system_check" check_system_resources_complete)
-        sqlite_alerts=$(error_handler_safe_execute "sqlite_check" check_sqlite_database_complete)
-    else
-        container_info=$(get_container_status_complete)
-        system_alerts=$(check_system_resources_complete) 
-        sqlite_alerts=$(check_sqlite_database_complete)
-    fi
+    container_info=$(get_container_status_unified)
+    system_alerts=$(check_system_resources_unified)
+    sqlite_alerts=$(check_sqlite_database_unified)
 
     # Parse status information
     local container_report alert_triggered
     eval "$(echo "$container_info" | grep -E '^(report|alert_triggered)=')"
 
-    # Get comprehensive system information for display
+    # Get system information for display
     local system_metrics
-    if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " perf-collector " ]]; then
-        system_metrics=$(perf_collector_system_full)
-    else
-        system_metrics=$(get_system_metrics_basic_fallback)
-    fi
+    system_metrics=$(get_unified_system_metrics)
 
     # Parse display metrics
     local load_avg mem_usage disk_usage
@@ -598,7 +518,7 @@ generate_complete_status_email() {
     mem_usage=$(free -m | awk 'NR==2{printf "%.2f%% (%d/%d MB)", $3*100/$2, $3, $2}')
     disk_usage=$(df -h . | awk 'NR==2{print $5 " (" $3 "/" $2 ")"}')
 
-    # Enhanced SQLite information display
+    # SQLite information using unified paths
     local sqlite_info="🆕 Not initialized"
     if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " dashboard-sqlite " ]]; then
         local sqlite_status sqlite_metrics
@@ -608,37 +528,20 @@ generate_complete_status_email() {
         if [[ "$sqlite_status" =~ status=accessible ]] && [[ "$sqlite_metrics" =~ available=true ]]; then
             local file_size_mb journal_mode table_count user_count
             eval "$(echo "$sqlite_metrics" | grep -E '^(file_size_mb|journal_mode|table_count|user_count)=')"
-
-            # Format with framework if available
-            if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " perf-formatter " ]]; then
-                sqlite_info="$(perf_formatter_sqlite_summary "$file_size_mb" "$journal_mode" "$table_count" "$user_count")"
-            else
-                sqlite_info="📊 ${file_size_mb}MB, Mode: $journal_mode, Tables: $table_count, Users: $user_count"
-            fi
+            sqlite_info="📊 ${file_size_mb}MB, Mode: $journal_mode, Tables: $table_count, Users: $user_count"
         fi
     elif [[ -f "$SQLITE_DB_PATH" ]]; then
-        # Enhanced fallback SQLite info
         local db_size journal_mode
         db_size=$(du -h "$SQLITE_DB_PATH" | cut -f1)
-
-        if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " error-handler " ]]; then
-            journal_mode=$(error_handler_safe_execute "sqlite_journal" sqlite3 "$SQLITE_DB_PATH" "PRAGMA journal_mode;" || echo "unknown")
-        else
-            journal_mode=$(sqlite3 "$SQLITE_DB_PATH" "PRAGMA journal_mode;" || echo "unknown")
-        fi
-
+        journal_mode=$(sqlite3 "$SQLITE_DB_PATH" "PRAGMA journal_mode;" 2>/dev/null || echo "unknown")
         sqlite_info="📊 Size: $db_size, Mode: $journal_mode"
     fi
 
-    # Enhanced security information
+    # Security information using unified configuration
     local security_status="🔒 Security checks disabled"
     if docker ps --filter "name=bw_fail2ban" --filter "status=running" | grep -q "bw_fail2ban"; then
         local banned_count
-        if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " error-handler " ]]; then
-            banned_count=$(error_handler_safe_execute "fail2ban_status" docker exec bw_fail2ban fail2ban-client status | grep "Currently banned" | awk '{print $NF}' || echo "0")
-        else
-            banned_count=$(docker exec bw_fail2ban fail2ban-client status | grep "Currently banned" | awk '{print $NF}' || echo "0")
-        fi
+        banned_count=$(docker exec bw_fail2ban fail2ban-client status 2>/dev/null | grep "Currently banned" | awk '{print $NF}' || echo "0")
 
         if [[ $banned_count -gt ${FAIL2BAN_BANNED_CRITICAL:-25} ]]; then
             security_status="🚨 $banned_count IPs banned (critical: >${FAIL2BAN_BANNED_CRITICAL})"
@@ -658,26 +561,19 @@ generate_complete_status_email() {
         log_info "All systems reporting healthy status"
     fi
 
-    # Generate enhanced email subject
+    # Generate email subject
     local subject
     if [ "$test_mode" = true ]; then
-        subject="📧 VaultWarden Test Report (Framework v3) for $docker_host_ip"
-        log_info "Generating test email with complete framework integration"
+        subject="📧 VaultWarden Test Report (Unified Config v$MONITORING_CONFIG_VERSION) for $docker_host_ip"
     elif [ "$overall_alert_status" = true ]; then
         subject="🚨 VaultWarden ALERT: Issues Detected on $docker_host_ip"
-        log_error "Alert email being generated due to detected issues"
     else
         subject="✅ VaultWarden Status Report for $docker_host_ip"
-        log_info "Healthy status report being generated"
     fi
 
-    # Generate enhanced HTML email with complete framework formatting
+    # Generate HTML email with unified configuration display
     local email_body
-    if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " perf-formatter " ]]; then
-        email_body=$(perf_formatter_generate_status_email             "$subject"             "$docker_host_ip"             "$load_avg"             "$mem_usage"             "$disk_usage"             "$sqlite_info"             "$container_report"             "$system_alerts"             "$sqlite_alerts"             "$security_status"             "${FRAMEWORK_COMPONENTS[*]}")
-    else
-        # Fallback email generation (enhanced HTML template)
-        email_body=$(cat <<EOF
+    email_body=$(cat <<EOF
 From: VaultWarden Monitor <${SMTP_FROM:-noreply@$(hostname -d)}>
 To: $ALERT_EMAIL
 Subject: $subject
@@ -696,14 +592,14 @@ MIME-Version: 1.0
   h2 { color: #007bff; border-bottom: 3px solid #007bff; padding-bottom: 10px; }
   h3 { color: #495057; margin-top: 30px; margin-bottom: 15px; }
   .alert-section { background-color: #fff3cd; border-left: 5px solid #ffc107; padding: 20px; margin: 25px 0; border-radius: 4px; }
-  .framework-badge { background-color: #28a745; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+  .config-badge { background-color: #28a745; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
   .footer { text-align: center; color: #6c757d; font-size: 12px; margin-top: 30px; }
 </style>
 </head>
 <body>
   <div class="container">
-    <h2>🔒 VaultWarden Status Report (Phase 3 Complete)</h2>
-    <p><strong>SQLite Deployment</strong> <span class="framework-badge">Framework v3</span> | <em>$(date)</em></p>
+    <h2>🔒 VaultWarden Status Report (Unified Configuration)</h2>
+    <p><strong>SQLite Deployment</strong> <span class="config-badge">Config v$MONITORING_CONFIG_VERSION</span> | <em>$(date)</em></p>
 
     <h3>📊 System Information</h3>
     <table>
@@ -737,73 +633,62 @@ fi)
 
     <hr>
     <div class="footer">
-      <p><strong>Framework Components Active:</strong> ${FRAMEWORK_COMPONENTS[*]}<br>
-      <strong>Thresholds:</strong> CPU ${CPU_CRITICAL_THRESHOLD}%, Memory ${MEMORY_CRITICAL_THRESHOLD}%, Load ${LOAD_CRITICAL_THRESHOLD}, SQLite ${SQLITE_SIZE_CRITICAL_MB}MB</p>
+      <p><strong>Configuration Sources:</strong> $MONITORING_CONFIG_SOURCES<br>
+      <strong>Framework Components:</strong> ${FRAMEWORK_COMPONENTS[*]}<br>
+      <strong>Unified Thresholds:</strong> CPU ${CPU_ALERT_THRESHOLD}%, Memory ${MEMORY_ALERT_THRESHOLD}%, Load ${LOAD_ALERT_THRESHOLD}, SQLite ${SQLITE_SIZE_ALERT_MB}MB</p>
     </div>
   </div>
 </body>
 </html>
 EOF
-        )
-    fi
+    )
 
     echo "$overall_alert_status"
 }
 
 # ==============================================================================
-# MAIN EXECUTION WITH COMPLETE FRAMEWORK INTEGRATION
+# MAIN EXECUTION WITH UNIFIED CONFIGURATION
 # ==============================================================================
 main() {
     local test_mode=false
     if [[ "${1:-}" == "--test" ]]; then
         test_mode=true
-        log_info "Running alert system in test mode with complete framework integration"
+        log_info "Running alert system in test mode with unified configuration"
     else
-        log_info "Starting alert system with complete framework integration"
+        log_info "Starting alert system with unified configuration"
     fi
 
-    # Log framework status
+    # Log configuration status
     log_info "Framework components loaded: ${#FRAMEWORK_COMPONENTS[@]} (${FRAMEWORK_COMPONENTS[*]})"
+    log_info "Unified configuration v$MONITORING_CONFIG_VERSION from: $MONITORING_CONFIG_SOURCES"
 
-    # Load configuration with enhanced error handling
-    if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " error-handler " ]]; then
-        if ! error_handler_safe_execute "config_load" load_config; then
-            log_error "Configuration loading failed"
-            exit 1
-        fi
-    else
-        load_config
+    # Load settings.env configuration
+    if [[ -f "${SCRIPT_DIR}/settings.env" ]]; then
+        set -a
+        source "${SCRIPT_DIR}/settings.env"
+        set +a
+        log_debug "Settings loaded from settings.env"
     fi
 
-    # Generate and send email with complete framework integration
+    # Generate and send email
     local email_content alert_status
-    email_content=$(generate_complete_status_email "$test_mode")
+    email_content=$(generate_status_email_unified "$test_mode")
     alert_status=$(echo "$email_content" | tail -1)
     email_content=$(echo "$email_content" | head -n -1)
 
-    # Enhanced email sending with framework error handling
+    # Send email
     local send_success=false
-    if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " error-handler " ]]; then
-        if error_handler_safe_execute "email_send" bash -c "echo '$email_content' | sendmail -t"; then
-            send_success=true
-            log_info "Email sent successfully using framework error handling"
-        else
-            log_error "Email sending failed with framework error handling"
-        fi
+    if echo "$email_content" | sendmail -t 2>/dev/null; then
+        send_success=true
+        log_info "Email sent successfully using unified configuration"
     else
-        # Fallback email sending
-        if echo "$email_content" | sendmail -t; then
-            send_success=true
-            log_info "Email sent successfully using fallback method"
-        else
-            log_error "Email sending failed using fallback method"
-        fi
+        log_error "Email sending failed"
     fi
 
-    # Enhanced result reporting and exit handling
+    # Result reporting
     if [ "$test_mode" = true ]; then
         if [[ "$send_success" == "true" ]]; then
-            log_success "Test report sent successfully to $ALERT_EMAIL (complete framework integration verified)"
+            log_success "Test report sent successfully to $ALERT_EMAIL (unified configuration verified)"
             exit 0
         else
             log_error "Failed to send test report"
@@ -827,75 +712,67 @@ main() {
 }
 
 # ==============================================================================
-# ENHANCED HELP WITH COMPLETE FRAMEWORK DOCUMENTATION
+# HELP WITH UNIFIED CONFIGURATION
 # ==============================================================================
 show_help() {
-    # Use framework formatter for help if available
-    if [[ " ${FRAMEWORK_COMPONENTS[*]} " =~ " perf-formatter " ]]; then
-        perf_formatter_show_help "VaultWarden Alert System" "Phase 3 Complete Framework Integration"             "Comprehensive monitoring with unified logging, standardized formatting, and complete error handling"
-    else
-        cat <<EOF
+    cat <<EOF
 
-🔒 VaultWarden-OCI-Slim Alert System (Phase 3 Complete)
-========================================================
+🔒 VaultWarden-OCI-Slim Alert System (Unified Configuration v$MONITORING_CONFIG_VERSION)
+======================================================================================
 
 Usage: $0 [COMMAND]
 
 Commands:
     --help, -h      Shows this help message and exits
-    --test          Sends test alert with complete framework integration
-    (no command)    Runs full health check with complete framework
+    --test          Sends test alert with unified configuration
+    (no command)    Runs full health check with unified configuration
 
-🆕 Phase 3 Complete Framework Integration:
-  ✅ lib/perf-collector.sh: Unified system metrics with intelligent caching
-  ✅ lib/dashboard-sqlite.sh: Comprehensive SQLite monitoring and analysis
-  ✅ lib/dashboard-metrics.sh: Complete container management integration
-  ✅ lib/logger.sh: Structured logging with rotation and categorization
-  ✅ lib/error-handler.sh: Robust error recovery and safe execution
-  ✅ lib/perf-formatter.sh: Standardized output formatting and styling
+🆕 Unified Configuration Benefits:
+  ✅ Single source of truth for all thresholds
+  ✅ Consistent variable names across all scripts
+  ✅ Centralized configuration management
+  ✅ External config file support with priority
+  ✅ Built-in threshold validation
+  ✅ Standardized metric evaluation functions
 
-🔍 Complete Monitoring Features:
-  • System Resources: Framework-cached metrics with configurable thresholds
-  • Container Status: Unified management via dashboard-metrics integration
-  • SQLite Database: Comprehensive analysis including fragmentation detection
-  • Security Status: Enhanced Fail2ban monitoring with threshold analysis
-  • Email Reports: Framework-formatted HTML with consistent styling
+📋 Configuration Sources (Priority Order):
+  1. config/performance-targets.conf (highest priority)
+  2. config/alert-thresholds.conf  
+  3. config/monitoring-intervals.conf
+  4. settings.env / environment variables
+  5. Built-in defaults (lowest priority)
 
-⚙️ Complete Configuration Integration:
-  • config/performance-targets.conf: All performance thresholds externalized
-  • config/alert-thresholds.conf: Alert-specific policies and intervals
-  • config/monitoring-intervals.conf: Timing and refresh rate configuration
-  • settings.env: Core deployment configuration (ALERT_EMAIL required)
+⚙️ Unified Threshold Configuration:
+  • CPU Usage: Warning ${CPU_WARNING_THRESHOLD}%, Alert ${CPU_ALERT_THRESHOLD}%, Critical ${CPU_CRITICAL_THRESHOLD}%
+  • Memory Usage: Warning ${MEMORY_WARNING_THRESHOLD}%, Alert ${MEMORY_ALERT_THRESHOLD}%, Critical ${MEMORY_CRITICAL_THRESHOLD}%
+  • Load Average: Warning ${LOAD_WARNING_THRESHOLD}, Alert ${LOAD_ALERT_THRESHOLD}, Critical ${LOAD_CRITICAL_THRESHOLD} (1 OCPU)
+  • SQLite Size: Warning ${SQLITE_SIZE_WARNING_MB}MB, Alert ${SQLITE_SIZE_ALERT_MB}MB, Critical ${SQLITE_SIZE_CRITICAL_MB}MB
+  • WAL Size: Warning ${WAL_SIZE_WARNING_MB}MB, Alert ${WAL_SIZE_ALERT_MB}MB, Critical ${WAL_SIZE_CRITICAL_MB}MB
 
-🎯 1 OCPU/6GB Complete Optimization:
-  • Framework component caching minimizes system overhead
-  • Single CPU load analysis with critical threshold monitoring
-  • Memory targeting ~672MB total containers
-  • SQLite performance optimization with intelligent maintenance recommendations
-  • Structured logging reduces I/O overhead
+🔍 Monitoring Features:
+  • Unified system resource monitoring with consistent thresholds
+  • SQLite database analysis using centralized configuration
+  • Container status monitoring with framework integration
+  • Security monitoring with configurable banned IP thresholds
+  • Email reports with unified formatting and threshold display
 
-📧 Enhanced Email Features:
-  • Framework-formatted HTML templates with consistent styling
-  • Configurable alert intervals and retry policies
-  • Rich diagnostic information with threshold context
-  • Mobile-responsive design for on-the-go monitoring
-
-🔄 Complete Backward Compatibility:
-  • Graceful fallback when any framework component unavailable
-  • Enhanced functionality with full framework, basic functionality without
-  • Existing configuration files fully supported
-  • Zero breaking changes to existing deployments
+📧 Email Configuration (from settings.env):
+  • ALERT_EMAIL: Primary alert destination
+  • SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD: Mail server config
+  • WEBHOOK_URL: Alternative webhook notifications
 
 Examples:
-    $0                 # Complete framework-integrated health check
-    $0 --test          # Test all framework components with sample alert
-    $0 --help          # Show complete framework documentation
+    $0                 # Full health check with unified configuration
+    $0 --test          # Test unified configuration and email delivery
+    $0 --help          # Show unified configuration documentation
+
+Current Configuration Sources: $MONITORING_CONFIG_SOURCES
+Framework Components Active: ${FRAMEWORK_COMPONENTS[*]:-"None (using fallback methods)"}
 
 EOF
-    fi
 }
 
-# Script entry point with complete framework integration
+# Script entry point
 case "${1:-}" in
     --help|-h)
         show_help
@@ -903,7 +780,7 @@ case "${1:-}" in
         ;;
     --test)
         check_dependencies
-        log_info "Running complete framework integration test..."
+        log_info "Running unified configuration test..."
         main "--test"
         ;;
     *)
