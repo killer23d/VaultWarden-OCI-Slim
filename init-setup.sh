@@ -189,7 +189,7 @@ EOF
 
     if is_root; then log_error "Do not run this script as root."; fi
 
-    if ! sudo -n true; then
+    if ! sudo -n true 2>/dev/null; then
         log_error "Passwordless sudo access is required. Please check your /etc/sudoers.d/ configuration."
     fi
     
@@ -212,9 +212,18 @@ EOF
     
     setup_project
     setup_sqlite_maintenance
+
+    # Automatically run the configuration wizard
+    log_step "Launching Interactive Configuration Wizard"
+    if [[ -f "$SCRIPT_DIR/tools/settings.env.wizard.sh" ]]; then
+        chmod +x "$SCRIPT_DIR/tools/settings.env.wizard.sh"
+        "$SCRIPT_DIR/tools/settings.env.wizard.sh"
+    else
+        log_warning "Configuration wizard not found. Please configure settings.env manually."
+    fi
     
     log_step "Setup Complete!"
-    log_success "Your system is now ready. Please configure settings.env and run ./startup.sh"
+    log_success "Your system is now ready. Please review settings.env and run ./startup.sh"
 }
 
 main "$@"
