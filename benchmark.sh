@@ -1,499 +1,228 @@
 #!/usr/bin/env bash
-# benchmark.sh -- Performance benchmarking tool for VaultWarden-OCI
+# VaultWarden SQLite benchmark/health script (fail-fast, no fallbacks)
+# Purpose:
+# - Validate SQLite DB presence and basic health
+# - Report size, WAL size, freelist/fragmentation
+# - Enforce thresholds via env/settings.env
+# Exits non-zero when thresholds are breached or required inputs are missing.
 
-# Set up environment
 set -euo pipefail
-export DEBUG="${DEBUG:-false}"
-export LOG_FILE="/tmp/vaultwarden_benchmark_$(date +%Y%m%d_%H%M%S).log"
+IFS=$'\n\t'
 
-# Source library modules with robust error handling
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
-source "$SCRIPT_DIR/lib/common.sh" || {
-    # Fallback colors and logging functions if lib/common.sh not available
-    if [[ -t 1 && "${TERM:-}" != "dumb" ]]; then
-        RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
-        BLUE='\033[0;34m'; PURPLE='\033[0;35m'; CYAN='\033[0;36m'
-        WHITE='\033[1;37m'; BOLD='\033[1m'; NC='\033[0m'
-    else
-        RED=''; GREEN=''; YELLOW=''; BLUE=''; PURPLE=''; CYAN=''
-        WHITE=''; BOLD=''; NC=''
-    fi
-    log_info() { echo -e "${BLUE}[INFO]${NC} $*"; }
-    log_success() { echo -e "${GREEN}[SUCCESS]${NC} $*"; }
-    log_warning() { echo -e "${YELLOW}[WARNING]${NC} $*"; }
-    log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
-    log_step() { echo -e "${BOLD}${CYAN}=== $* ===${NC}"; }
-    SETTINGS_FILE="${SETTINGS_FILE:-./settings.env}"
-    echo -e "${YELLOW}[WARNING]${NC} lib/common.sh not found - using fallback functions"
-}
-source "$SCRIPT_DIR/lib/docker.sh" || {
-    echo -e "${YELLOW}[WARNING]${NC} lib/docker.sh not found - using fallback functions"
-    is_service_running() { docker ps --filter "name=$1" --filter "status=running" | grep -q "$1"; }
-    is_stack_running() { is_service_running "vaultwarden" && is_service_running "bw_caddy"; }
-    get_container_id() { docker ps --filter "name=$1" -q | head -1; }
-    wait_for_service() { sleep 2; return 0; }
-}
-source "$SCRIPT_DIR/lib/performance.sh" || {
-    echo -e "${YELLOW}[WARNING]${NC} lib/performance.sh not found - using basic performance functions"
-}
+# -------------- Logging --------------
+log_info()  { echo "[INFO] $*"; }
+log_warn()  { echo "[WARN] $*" >&2; }
+log_error() { echo "[ERROR] $*" >&2; }
+die()       { log_error "$*"; exit 1; }
 
-# Benchmark configuration
-BENCHMARK_RESULTS_DIR="./benchmarks"
-BENCHMARK_DURATION="${BENCHMARK_DURATION:-60}"  # seconds
-BENCHMARK_SAMPLES="${BENCHMARK_SAMPLES:-12}"    # number of samples
+# -------------- Defaults and env --------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$SCRIPT_DIR"
 
-# ================================
-# BENCHMARK FUNCTIONS
-# ================================
+SETTINGS_FILE="${SETTINGS_FILE:-$REPO_ROOT/settings.env}"
 
-# Initialize benchmark environment
-init_benchmark() {
-    log_info "Initializing benchmark environment..."
+# Load settings.env if present (fail-fast only if explicitly requested)
+if [[ -f "$SETTINGS_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$SETTINGS_FILE"
+  set +a
+fi
 
-    # Create results directory
-    mkdir -p "$BENCHMARK_RESULTS_DIR"
+# Default paths (can be overridden by flags or env)
+DEFAULT_DB_PATH="$REPO_ROOT/data/bwdata/db.sqlite3"
+DEFAULT_DATA_DIR="$REPO_ROOT/data/bwdata"
 
-    # Ensure stack is running
-    if ! is_stack_running; then
-        log_error "VaultWarden stack is not running. Please start it first with ./startup.sh"
-        return 1
-    fi
+SQLITE_DB_PATH="${SQLITE_DB_PATH:-$DEFAULT_DB_PATH}"
+VAULTWARDEN_DATA_DIR="${VAULTWARDEN_DATA_DIR:-$DEFAULT_DATA_DIR}"
 
-    log_success "Benchmark environment ready"
-}
+# Thresholds (align with monitoring env; safe defaults)
+SQLITE_SIZE_ALERT_MB="${SQLITE_SIZE_ALERT_MB:-100}"
+WAL_SIZE_ALERT_MB="${WAL_SIZE_ALERT_MB:-10}"
+FRAGMENTATION_ALERT_RATIO="${FRAGMENTATION_ALERT_RATIO:-1.5}"
+FREELIST_ALERT_THRESHOLD="${FREELIST_ALERT_THRESHOLD:-15}"  # percent
 
-# System benchmark
-run_system_benchmark() {
-    local output_file="$1"
-    local duration="$2"
+# -------------- CLI parsing --------------
+JSON_OUTPUT=false
+QUICK=false
+DB_OVERRIDE=""
+DATA_DIR_OVERRIDE=""
 
-    log_info "Running system benchmark for ${duration}s..."
-
-    local start_time end_time
-    start_time=$(date +%s)
-    end_time=$((start_time + duration))
-
-    # Collect system metrics
-    local metrics=()
-    while [[ $(date +%s) -lt $end_time ]]; do
-        local timestamp cpu_usage memory_usage disk_io load_avg
-        timestamp=$(date -Iseconds || date)
-        cpu_usage=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1 || echo "0")
-        memory_usage=$(free | grep Mem | awk '{printf("%.1f", $3/$2 * 100.0)}' || echo "0")
-        load_avg=$(uptime | awk -F'load average:' '{print $2}' | cut -d',' -f1 | xargs || echo "0")
-
-        # Get disk I/O stats
-        if command -v iostat >/dev/null 2>&1; then
-            disk_io=$(iostat -d 1 1 | tail -n +4 | awk '{sum+=$4} END {print sum}' || echo "0")
-        else
-            disk_io="0"
-        fi
-
-        # Create simple metric record (avoiding jq dependency)
-        local metric_line="${timestamp},${cpu_usage},${memory_usage},${load_avg},${disk_io}"
-        metrics+=("$metric_line")
-        sleep 5
-    done
-
-    # Calculate statistics
-    local cpu_sum=0 cpu_max=0 memory_sum=0 memory_max=0 load_sum=0 load_max=0 count=0
-
-    for metric in "${metrics[@]}"; do
-        IFS=',' read -r timestamp cpu memory load disk_io <<< "$metric"
-        cpu_sum=$(echo "$cpu_sum + $cpu" | bc -l || echo "$cpu_sum")
-        memory_sum=$(echo "$memory_sum + $memory" | bc -l || echo "$memory_sum")
-        load_sum=$(echo "$load_sum + $load" | bc -l || echo "$load_sum")
-
-        if (( $(echo "$cpu > $cpu_max" | bc -l || echo 0) )); then cpu_max="$cpu"; fi
-        if (( $(echo "$memory > $memory_max" | bc -l || echo 0) )); then memory_max="$memory"; fi
-        if (( $(echo "$load > $load_max" | bc -l || echo 0) )); then load_max="$load"; fi
-
-        count=$((count + 1))
-    done
-
-    local cpu_avg memory_avg load_avg_val
-    if [[ $count -gt 0 ]]; then
-        cpu_avg=$(echo "scale=2; $cpu_sum / $count" | bc -l || echo "0")
-        memory_avg=$(echo "scale=2; $memory_sum / $count" | bc -l || echo "0")
-        load_avg_val=$(echo "scale=2; $load_sum / $count" | bc -l || echo "0")
-    else
-        cpu_avg="0"; memory_avg="0"; load_avg_val="0"
-    fi
-
-    # Generate simple JSON report
-    cat > "$output_file" <<EOF
-{
-    "benchmark_type": "system",
-    "timestamp": "$(date -Iseconds || date)",
-    "duration_seconds": $duration,
-    "sample_count": $count,
-    "results": {
-        "cpu": {
-            "average": $cpu_avg,
-            "maximum": $cpu_max,
-            "unit": "percent"
-        },
-        "memory": {
-            "average": $memory_avg,
-            "maximum": $memory_max,
-            "unit": "percent"
-        },
-        "load": {
-            "average": $load_avg_val,
-            "maximum": $load_max,
-            "unit": "load_average"
-        }
-    }
-}
-EOF
-
-    log_success "System benchmark completed: $output_file"
-}
-
-# Database benchmark (SQLite optimized)
-run_database_benchmark() {
-    local output_file="$1"
-    local duration="$2"
-
-    log_info "Running SQLite database benchmark for ${duration}s..."
-
-    # Check if SQLite database exists
-    local sqlite_path="./data/bw/data/bwdata/db.sqlite3"
-    if [[ ! -f "$sqlite_path" ]]; then
-        log_warning "SQLite database not found - creating basic benchmark"
-        cat > "$output_file" <<EOF
-{
-    "benchmark_type": "database",
-    "timestamp": "$(date -Iseconds || date)",
-    "duration_seconds": $duration,
-    "sample_count": 1,
-    "results": {
-        "status": "database_not_found",
-        "message": "SQLite database not initialized yet"
-    }
-}
-EOF
-        return 0
-    fi
-
-    if ! command -v sqlite3 >/dev/null 2>&1; then
-        log_warning "sqlite3 command not available"
-        cat > "$output_file" <<EOF
-{
-    "benchmark_type": "database",
-    "timestamp": "$(date -Iseconds || date)",
-    "duration_seconds": $duration,
-    "sample_count": 1,
-    "results": {
-        "status": "sqlite3_unavailable",
-        "message": "sqlite3 command not found"
-    }
-}
-EOF
-        return 0
-    fi
-
-    # Simple SQLite performance test
-    local start_time query_count=0
-    start_time=$(date +%s)
-    local end_time=$((start_time + duration))
-
-    while [[ $(date +%s) -lt $end_time ]]; do
-        if sqlite3 "$sqlite_path" "SELECT COUNT(*) FROM sqlite_master;" >/dev/null 2>&1; then
-            query_count=$((query_count + 1))
-        fi
-        sleep 1
-    done
-
-    local query_rate
-    query_rate=$(echo "scale=2; $query_count / $duration" | bc -l || echo "0")
-
-    # Get database size
-    local db_size_mb
-    db_size_mb=$(du -m "$sqlite_path" | cut -f1 || echo "0")
-
-    cat > "$output_file" <<EOF
-{
-    "benchmark_type": "database",
-    "timestamp": "$(date -Iseconds || date)",
-    "duration_seconds": $duration,
-    "sample_count": $query_count,
-    "results": {
-        "query_rate": {
-            "value": $query_rate,
-            "unit": "queries_per_second"
-        },
-        "database_size": {
-            "value": $db_size_mb,
-            "unit": "megabytes"
-        },
-        "queries_executed": $query_count
-    }
-}
-EOF
-
-    log_success "Database benchmark completed: $output_file"
-}
-
-# HTTP response time benchmark
-run_http_benchmark() {
-    local output_file="$1"
-    local duration="$2"
-
-    log_info "Running HTTP benchmark for ${duration}s..."
-
-    # Load configuration to get domain
-    if [[ -f "$SETTINGS_FILE" ]]; then
-        set -a
-        source "$SETTINGS_FILE" || true
-        set +a
-    fi
-
-    local test_url="${DOMAIN:-http://localhost}"
-    local health_endpoint="${test_url}/alive"
-
-    local start_time end_time
-    start_time=$(date +%s)
-    end_time=$((start_time + duration))
-
-    local response_times=()
-    local successful_requests=0
-    local failed_requests=0
-    local total_response_time=0
-    local min_time=999 max_time=0
-
-    while [[ $(date +%s) -lt $end_time ]]; do
-        local response_time
-        response_time=$(curl -o /dev/null -s -w "%{time_total}" --max-time 10 "$health_endpoint" || echo "")
-
-        if [[ -n "$response_time" ]] && [[ "$response_time" != "000" ]]; then
-            response_times+=("$response_time")
-            successful_requests=$((successful_requests + 1))
-
-            # Update min/max (using bc if available, otherwise basic comparison)
-            if command -v bc >/dev/null 2>&1; then
-                total_response_time=$(echo "$total_response_time + $response_time" | bc -l)
-                if (( $(echo "$response_time < $min_time" | bc -l) )); then min_time="$response_time"; fi
-                if (( $(echo "$response_time > $max_time" | bc -l) )); then max_time="$response_time"; fi
-            else
-                # Simple integer comparison (convert to milliseconds)
-                local time_ms=$(echo "$response_time * 1000" | cut -d. -f1 || echo "0")
-                if [[ $time_ms -lt $(echo "$min_time * 1000" | cut -d. -f1 || echo "999000") ]]; then
-                    min_time="$response_time"
-                fi
-                if [[ $time_ms -gt $(echo "$max_time * 1000" | cut -d. -f1 || echo "0") ]]; then
-                    max_time="$response_time"
-                fi
-            fi
-        else
-            failed_requests=$((failed_requests + 1))
-        fi
-
-        sleep 2
-    done
-
-    # Calculate statistics
-    local total_requests avg_response_time success_rate
-    total_requests=$((successful_requests + failed_requests))
-
-    if [[ $successful_requests -gt 0 ]] && command -v bc >/dev/null 2>&1; then
-        avg_response_time=$(echo "scale=3; $total_response_time / $successful_requests" | bc -l)
-        success_rate=$(echo "scale=1; $successful_requests * 100 / $total_requests" | bc -l)
-    else
-        avg_response_time="0.000"
-        success_rate="0"
-    fi
-
-    cat > "$output_file" <<EOF
-{
-    "benchmark_type": "http",
-    "timestamp": "$(date -Iseconds || date)",
-    "duration_seconds": $duration,
-    "test_url": "$health_endpoint",
-    "results": {
-        "total_requests": $total_requests,
-        "successful_requests": $successful_requests,
-        "failed_requests": $failed_requests,
-        "success_rate": {
-            "value": $success_rate,
-            "unit": "percent"
-        },
-        "response_time": {
-            "average": $avg_response_time,
-            "minimum": $min_time,
-            "maximum": $max_time,
-            "unit": "seconds"
-        }
-    }
-}
-EOF
-
-    log_success "HTTP benchmark completed: $output_file"
-}
-
-# Generate comprehensive report
-generate_comprehensive_report() {
-    local benchmark_files=("$@")
-    local output_file="$BENCHMARK_RESULTS_DIR/benchmark_report_$(date +%Y%m%d_%H%M%S).html"
-
-    log_info "Generating comprehensive benchmark report..."
-
-    cat > "$output_file" <<'EOF'
-<!DOCTYPE html>
-<html>
-<head>
-    <title>VaultWarden-OCI Benchmark Report</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 40px; background: #f5f5f5; }
-        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; margin: -30px -30px 30px -30px; border-radius: 8px 8px 0 0; }
-        .section { margin: 30px 0; }
-        .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }
-        .metric-card { background: #f8f9fa; padding: 20px; border-radius: 6px; border-left: 4px solid #007bff; }
-        .metric-value { font-size: 1.5em; font-weight: bold; color: #2c3e50; }
-        .metric-label { color: #6c757d; font-size: 0.9em; margin-bottom: 5px; }
-        .good { border-left-color: #28a745; }
-        .warning { border-left-color: #ffc107; }
-        .timestamp { color: #6c757d; font-size: 0.9em; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>🚀 VaultWarden-OCI Benchmark Report</h1>
-            <p class="timestamp">Generated: $(date) | System: $(hostname)</p>
-        </div>
-
-        <div class="section">
-            <h2>📊 Benchmark Summary</h2>
-            <p>Performance analysis completed for SQLite-optimized VaultWarden deployment.</p>
-        </div>
-    </div>
-</body>
-</html>
-EOF
-
-    log_success "Comprehensive benchmark report generated: $output_file"
-    echo "$output_file"
-}
-
-# ================================
-# MAIN EXECUTION
-# ================================
-
-main() {
-    local command="${1:-help}"
-
-    case "$command" in
-        "run")
-            local benchmark_type="${2:-all}"
-            local duration="${3:-$BENCHMARK_DURATION}"
-            local timestamp=$(date +%Y%m%d_%H%M%S)
-
-            if ! init_benchmark; then
-                exit 1
-            fi
-
-            local benchmark_files=()
-
-            case "$benchmark_type" in
-                "system")
-                    run_system_benchmark "$BENCHMARK_RESULTS_DIR/system_$timestamp.json" "$duration"
-                    benchmark_files+=("$BENCHMARK_RESULTS_DIR/system_$timestamp.json")
-                    ;;
-                "database")
-                    run_database_benchmark "$BENCHMARK_RESULTS_DIR/database_$timestamp.json" "$duration"
-                    benchmark_files+=("$BENCHMARK_RESULTS_DIR/database_$timestamp.json")
-                    ;;
-                "http")
-                    run_http_benchmark "$BENCHMARK_RESULTS_DIR/http_$timestamp.json" "$duration"
-                    benchmark_files+=("$BENCHMARK_RESULTS_DIR/http_$timestamp.json")
-                    ;;
-                "all")
-                    log_info "Running comprehensive benchmark suite..."
-                    run_system_benchmark "$BENCHMARK_RESULTS_DIR/system_$timestamp.json" "$duration"
-                    run_database_benchmark "$BENCHMARK_RESULTS_DIR/database_$timestamp.json" "$duration"
-                    run_http_benchmark "$BENCHMARK_RESULTS_DIR/http_$timestamp.json" "$duration"
-                    benchmark_files=(
-                        "$BENCHMARK_RESULTS_DIR/system_$timestamp.json"
-                        "$BENCHMARK_RESULTS_DIR/database_$timestamp.json"
-                        "$BENCHMARK_RESULTS_DIR/http_$timestamp.json"
-                    )
-                    ;;
-                *)
-                    log_error "Unknown benchmark type: $benchmark_type"
-                    exit 1
-                    ;;
-            esac
-
-            # Generate comprehensive report
-            if [[ ${#benchmark_files[@]} -gt 0 ]]; then
-                generate_comprehensive_report "${benchmark_files[@]}"
-            fi
-            ;;
-        "list")
-            log_info "Available benchmark results:"
-            if [[ -d "$BENCHMARK_RESULTS_DIR" ]]; then
-                ls -la "$BENCHMARK_RESULTS_DIR" || echo "No files found"
-            else
-                log_info "No benchmark results found"
-            fi
-            ;;
-        "clean")
-            log_info "Cleaning old benchmark results..."
-            if [[ -d "$BENCHMARK_RESULTS_DIR" ]]; then
-                find "$BENCHMARK_RESULTS_DIR" -name "*.json" -mtime +7 -delete || true
-                find "$BENCHMARK_RESULTS_DIR" -name "*.html" -mtime +30 -delete || true
-                log_success "Old benchmark results cleaned"
-            fi
-            ;;
-        "help"|"-h"|"--help")
-            cat <<EOF
-VaultWarden-OCI Performance Benchmark Tool (SQLite Optimized)
-
-Usage: $0 <command> [options]
-
-Commands:
-    run <type> [duration]   Run benchmark suite
-    list                    List available results  
-    clean                   Clean old results
-    help                    Show this help message
-
-Benchmark Types:
-    system                  System performance (CPU, Memory, Load)
-    database                SQLite database performance
-    http                    HTTP response times
-    all                     Run all benchmarks (default)
+usage() {
+  cat <<EOF
+Usage: $(basename "$0") [options]
 
 Options:
-    duration                Benchmark duration in seconds (default: 60)
+  --db PATH           Path to SQLite DB (default: $SQLITE_DB_PATH)
+  --data-dir PATH     Vaultwarden data dir (default: $VAULTWARDEN_DATA_DIR)
+  --json              Output JSON
+  --quick             Skip intensive checks (pragma optimize, integrity)
+  -h, --help          Show this help
 
-Examples:
-    $0 run all              # Run all benchmarks for 60 seconds
-    $0 run system 120       # Run system benchmark for 2 minutes
-    $0 run database         # Run SQLite benchmark
-    $0 list                 # Show available results
-    $0 clean                # Clean old results
-
-Output:
-    - JSON files: ./benchmarks/TYPE_TIMESTAMP.json
-    - HTML report: ./benchmarks/benchmark_report_TIMESTAMP.html
-
-Requirements:
-    - VaultWarden stack must be running
-    - All services must be healthy
-    - Sufficient disk space in ./benchmarks/
-
+Env/Settings respected if set:
+  SQLITE_DB_PATH, VAULTWARDEN_DATA_DIR
+  SQLITE_SIZE_ALERT_MB, WAL_SIZE_ALERT_MB, FRAGMENTATION_ALERT_RATIO, FREELIST_ALERT_THRESHOLD
 EOF
-            exit 0
-            ;;
-        *)
-            log_error "Unknown command: $command"
-            echo "Use '$0 help' for usage information"
-            exit 1
-            ;;
-    esac
 }
 
-# Execute main function
-main "$@"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --db) DB_OVERRIDE="${2:-}"; shift 2 ;;
+    --data-dir) DATA_DIR_OVERRIDE="${2:-}"; shift 2 ;;
+    --json) JSON_OUTPUT=true; shift ;;
+    --quick) QUICK=true; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) die "Unknown option: $1. Use --help";;
+  esac
+done
+
+if [[ -n "$DB_OVERRIDE" ]]; then
+  SQLITE_DB_PATH="$DB_OVERRIDE"
+fi
+if [[ -n "$DATA_DIR_OVERRIDE" ]]; then
+  VAULTWARDEN_DATA_DIR="$DATA_DIR_OVERRIDE"
+fi
+
+# Derive WAL path (SQLite WAL is dbfile-wal)
+WAL_PATH="${SQLITE_DB_PATH}-wal"
+
+# -------------- Preconditions (fail-fast) --------------
+command -v sqlite3 >/dev/null 2>&1 || die "sqlite3 is required but not found in PATH"
+
+[[ -f "$SQLITE_DB_PATH" ]] || die "SQLite DB not found at: $SQLITE_DB_PATH"
+[[ -d "$VAULTWARDEN_DATA_DIR" ]] || log_warn "Data dir not found: $VAULTWARDEN_DATA_DIR (continuing)"
+
+# -------------- Helpers --------------
+bytes_to_mb() {
+  # usage: bytes_to_mb <bytes>
+  awk 'BEGIN { printf "%.2f", '"${1}"' / 1024 / 1024 }'
+}
+
+json_escape() {
+  # naive escaper for simple strings
+  echo -n "$1" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read().strip()))'
+}
+
+# -------------- Collect metrics --------------
+DB_SIZE_BYTES=$(stat -c%s "$SQLITE_DB_PATH")
+DB_SIZE_MB=$(bytes_to_mb "$DB_SIZE_BYTES")
+
+WAL_EXISTS=false
+WAL_SIZE_BYTES=0
+WAL_SIZE_MB=0.00
+if [[ -f "$WAL_PATH" ]]; then
+  WAL_EXISTS=true
+  WAL_SIZE_BYTES=$(stat -c%s "$WAL_PATH")
+  WAL_SIZE_MB=$(bytes_to_mb "$WAL_SIZE_BYTES")
+fi
+
+# Get page stats from sqlite
+# Outputs: page_count|freelist_count|page_size
+PRAGMA_OUT=$(sqlite3 "$SQLITE_DB_PATH" "SELECT (SELECT pragma_page_count()), (SELECT pragma_freelist_count()), (SELECT pragma_page_size());")
+# The output may be "page_count|freelist|page_size"
+IFS='|' read -r PAGE_COUNT FREE_COUNT PAGE_SIZE <<< "$PRAGMA_OUT"
+
+# Fallback sanity if empty (shouldn't happen with a valid DB)
+[[ -n "${PAGE_COUNT:-}" && -n "${FREE_COUNT:-}" && -n "${PAGE_SIZE:-}" ]] || die "Failed to read PRAGMA stats from DB"
+
+# Compute ratios
+FRAG_RATIO="0.00"
+FREE_PCT="0.00"
+if [[ "$PAGE_COUNT" -gt 0 ]]; then
+  FRAG_RATIO=$(awk 'BEGIN { printf "%.2f", '"$FREE_COUNT"' / '"$PAGE_COUNT"' }')
+  FREE_PCT=$(awk 'BEGIN { printf "%.2f", (('"$FREE_COUNT"' / '"$PAGE_COUNT"') * 100) }')
+fi
+
+# Optional deeper checks unless --quick
+INTEGRITY_RESULT="skipped"
+ANALYZE_SUGGESTED=false
+
+if [[ "$QUICK" == "false" ]]; then
+  # Lightweight integrity check
+  INTEGRITY_RESULT=$(sqlite3 "$SQLITE_DB_PATH" "PRAGMA quick_check;" | head -n1)
+  # Heuristic: suggest ANALYZE/REINDEX if fragmentation high
+  awk -v r="$FRAG_RATIO" 'BEGIN { exit (r > 1.0 ? 0 : 1) }' && ANALYZE_SUGGESTED=true || ANALYZE_SUGGESTED=false
+fi
+
+# -------------- Threshold evaluation --------------
+VIOLATIONS=()
+
+# DB size
+awk -v sz="$DB_SIZE_MB" -v th="$SQLITE_SIZE_ALERT_MB" 'BEGIN { exit (sz > th ? 0 : 1) }' \
+  && VIOLATIONS+=("Database size ${DB_SIZE_MB}MB exceeds threshold ${SQLITE_SIZE_ALERT_MB}MB")
+
+# WAL size (only if WAL exists)
+if [[ "$WAL_EXISTS" == "true" ]]; then
+  awk -v sz="$WAL_SIZE_MB" -v th="$WAL_SIZE_ALERT_MB" 'BEGIN { exit (sz > th ? 0 : 1) }' \
+    && VIOLATIONS+=("WAL size ${WAL_SIZE_MB}MB exceeds threshold ${WAL_SIZE_ALERT_MB}MB")
+fi
+
+# Fragmentation ratio
+awk -v r="$FRAG_RATIO" -v th="$FRAGMENTATION_ALERT_RATIO" 'BEGIN { exit (r > th ? 0 : 1) }' \
+  && VIOLATIONS+=("Fragmentation ratio ${FRAG_RATIO} exceeds ${FRAGMENTATION_ALERT_RATIO}")
+
+# Free list percent
+awk -v p="$FREE_PCT" -v th="$FREELIST_ALERT_THRESHOLD" 'BEGIN { exit (p > th ? 0 : 1) }' \
+  && VIOLATIONS+=("Freelist percent ${FREE_PCT}% exceeds ${FREELIST_ALERT_THRESHOLD}%")
+
+STATUS="ok"
+EXIT_CODE=0
+if [[ ${#VIOLATIONS[@]} -gt 0 ]]; then
+  STATUS="alert"
+  EXIT_CODE=2
+fi
+
+# -------------- Output --------------
+if [[ "$JSON_OUTPUT" == "true" ]]; then
+  # Build minimal JSON
+  echo -n '{'
+  echo -n "\"db_path\":$(json_escape "$SQLITE_DB_PATH"),"
+  echo -n "\"db_size_mb\":$DB_SIZE_MB,"
+  echo -n "\"wal_path\":$(json_escape "$WAL_PATH"),"
+  echo -n "\"wal_exists\":$([[ "$WAL_EXISTS" == "true" ]] && echo -n true || echo -n false),"
+  echo -n "\"wal_size_mb\":$WAL_SIZE_MB,"
+  echo -n "\"page_count\":$PAGE_COUNT,"
+  echo -n "\"freelist_count\":$FREE_COUNT,"
+  echo -n "\"page_size\":$PAGE_SIZE,"
+  echo -n "\"fragmentation_ratio\":$FRAG_RATIO,"
+  echo -n "\"freelist_percent\":$FREE_PCT,"
+  echo -n "\"integrity\":$(json_escape "$INTEGRITY_RESULT"),"
+  echo -n "\"thresholds\":{"
+  echo -n "\"SQLITE_SIZE_ALERT_MB\":$SQLITE_SIZE_ALERT_MB,"
+  echo -n "\"WAL_SIZE_ALERT_MB\":$WAL_SIZE_ALERT_MB,"
+  echo -n "\"FRAGMENTATION_ALERT_RATIO\":$FRAGMENTATION_ALERT_RATIO,"
+  echo -n "\"FREELIST_ALERT_THRESHOLD\":$FREELIST_ALERT_THRESHOLD"
+  echo -n "},"
+  echo -n "\"status\":$(json_escape "$STATUS"),"
+  printf '"violations":['
+  if [[ ${#VIOLATIONS[@]} -gt 0 ]]; then
+    for i in "${!VIOLATIONS[@]}"; do
+      printf '%s' "$(json_escape "${VIOLATIONS[$i]}")"
+      [[ $i -lt $((${#VIOLATIONS[@]} - 1)) ]] && printf ','
+    done
+  fi
+  echo ']}'
+else
+  echo "SQLite Health Report"
+  echo "--------------------"
+  echo "DB:           $SQLITE_DB_PATH"
+  echo "Size (MB):    $DB_SIZE_MB (threshold: ${SQLITE_SIZE_ALERT_MB}MB)"
+  echo "WAL:          $WAL_PATH (exists: $WAL_EXISTS)"
+  echo "WAL size (MB): $WAL_SIZE_MB (threshold: ${WAL_SIZE_ALERT_MB}MB)"
+  echo "Pages:        $PAGE_COUNT (size: ${PAGE_SIZE} bytes)"
+  echo "Freelist:     $FREE_COUNT (${FREE_PCT}%)"
+  echo "Fragmentation ratio: $FRAG_RATIO (threshold: ${FRAGMENTATION_ALERT_RATIO})"
+  echo "Integrity:    $INTEGRITY_RESULT"
+  $ANALYZE_SUGGESTED && echo "Suggestion:   Consider VACUUM/ANALYZE if fragmentation is persistently high."
+  if [[ ${#VIOLATIONS[@]} -gt 0 ]]; then
+    echo ""
+    echo "ALERTS:"
+    for v in "${VIOLATIONS[@]}"; do
+      echo " - $v"
+    done
+  fi
+  echo ""
+  echo "Status: $STATUS"
+fi
+
+exit "$EXIT_CODE"
