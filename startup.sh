@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# startup.sh -- Enhanced startup script with profile management and best practices
-# VaultWarden-OCI-NG - Production deployment script
+# startup.sh -- Enhanced startup script with industry best practices
+# VaultWarden-OCI-NG - Production deployment script with strict validation
 
-# Set up environment
+# BEST PRACTICE: Strict error handling
 set -euo pipefail
+IFS=$'\n\t'
+
 export DEBUG="${DEBUG:-false}"
 export LOG_FILE="/tmp/vaultwarden_startup_$(date +%Y%m%d_%H%M%S).log"
 
@@ -13,47 +15,221 @@ readonly SQLITE_DB_CONTAINER_PATH="/data/bwdata/db.sqlite3"
 readonly VAULTWARDEN_DATA_DIR="./data/bwdata"
 readonly VAULTWARDEN_DATA_CONTAINER_DIR="/data/bwdata"
 
-# Source library modules with robust error handling
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
-source "$SCRIPT_DIR/lib/common.sh" || {
-    # Fallback colors and logging functions if lib/common.sh not available
-    if [[ -t 1 && "${TERM:-}" != "dumb" ]]; then
-        RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
-        BLUE='\033[0;34m'; PURPLE='\033[0;35m'; CYAN='\033[0;36m'
-        WHITE='\033[1;37m'; BOLD='\033[1m'; NC='\033[0m'
-    else
-        RED=''; GREEN=''; YELLOW=''; BLUE=''; PURPLE=''; CYAN=''
-        WHITE=''; BOLD=''; NC=''
+# ================================
+# BEST PRACTICE: STRICT ENVIRONMENT VALIDATION
+# ================================
+
+validate_environment() {
+    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+    local lib_dir="$script_dir/lib"
+
+    # BEST PRACTICE: Fail fast on missing dependencies
+    if [[ ! -d "$lib_dir" ]]; then
+        echo "❌ FATAL: Required lib/ directory not found at: $lib_dir" >&2
+        echo "📋 This suggests an incomplete installation." >&2
+        echo "🔧 Solution: Run './init-setup.sh' or re-clone the repository" >&2
+        exit 1
     fi
-    log_info() { echo -e "${BLUE}[INFO]${NC} $*"; }
-    log_success() { echo -e "${GREEN}[SUCCESS]${NC} $*"; }
-    log_warning() { echo -e "${YELLOW}[WARNING]${NC} $*"; }
-    log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
-    log_step() { echo -e "${BOLD}${CYAN}=== $* ===${NC}"; }
-    log_fatal() { echo -e "${RED}[FATAL]${NC} $*" >&2; exit 1; }
-    validate_system_requirements() { return 0; }
-    validate_project_structure() { return 0; }
-    wait_for_service() { sleep 2; return 0; }
-    echo -e "${YELLOW}[WARNING]${NC} lib/common.sh not found - using fallback functions"
+
+    # Check required library files
+    local required_libs=("common.sh" "config.sh" "docker.sh")
+    local missing_libs=()
+
+    for lib in "${required_libs[@]}"; do
+        if [[ ! -f "$lib_dir/$lib" ]]; then
+            missing_libs+=("$lib")
+        fi
+    done
+
+    if [[ ${#missing_libs[@]} -gt 0 ]]; then
+        echo "❌ FATAL: Required libraries missing from $lib_dir:" >&2
+        printf '   - %s\n' "${missing_libs[@]}" >&2
+        echo "🔧 Solution: Restore missing files or run './init-setup.sh'" >&2
+        exit 1
+    fi
 }
-source "$SCRIPT_DIR/lib/docker.sh" || {
-    echo -e "${YELLOW}[WARNING]${NC} lib/docker.sh not found - some Docker functions may not work"
-    perform_health_check() { return 0; }
+
+# Load libraries without fallbacks (BEST PRACTICE: No silent failures)
+load_libraries() {
+    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+
+    # Source required libraries (will fail if not found due to set -e)
+    source "$script_dir/lib/common.sh"
+    source "$script_dir/lib/config.sh"
+    source "$script_dir/lib/docker.sh"
 }
-source "$SCRIPT_DIR/lib/config.sh" || {
-    echo -e "${YELLOW}[WARNING]${NC} lib/config.sh not found - using basic config handling"
-    create_secure_tmpdir() { mktemp -d; }
-    create_secure_env_file() { cp "${SETTINGS_FILE:-./settings.env}" "$1" || touch "$1"; }
-    validate_configuration() { return 0; }
-    update_cloudflare_ips() { return 0; }
-    generate_fail2ban_config() { return 0; }
+
+# ================================
+# CONFIGURATION VALIDATION FUNCTIONS
+# ================================
+
+# BEST PRACTICE: Validate core configuration requirements
+validate_core_configuration() {
+    log_info "Validating core configuration requirements..."
+
+    local errors=()
+
+    # Required core variables
+    local required_vars=(
+        "DOMAIN:Domain configuration"
+        "ADMIN_TOKEN:VaultWarden admin token"
+        "ADMIN_EMAIL:Administrator email"
+    )
+
+    for var_spec in "${required_vars[@]}"; do
+        local var_name="${var_spec%%:*}"
+        local var_desc="${var_spec##*:}"
+
+        if [[ -z "${!var_name:-}" ]]; then
+            errors+=("❌ $var_name ($var_desc) is required but not set")
+        fi
+    done
+
+    # Validate ADMIN_TOKEN format (should be base64-like)
+    if [[ -n "${ADMIN_TOKEN:-}" ]] && [[ ! "${ADMIN_TOKEN}" =~ ^[A-Za-z0-9+/=]{40,}$ ]]; then
+        errors+=("⚠️  ADMIN_TOKEN should be generated with: openssl rand -base64 32")
+    fi
+
+    # Validate DOMAIN format
+    if [[ -n "${DOMAIN:-}" ]] && [[ ! "${DOMAIN}" =~ ^https?:// ]]; then
+        errors+=("❌ DOMAIN must start with http:// or https://")
+    fi
+
+    if [[ ${#errors[@]} -gt 0 ]]; then
+        log_error "Core configuration validation failed:"
+        printf '  %s\n' "${errors[@]}"
+        echo ""
+        echo "🔧 Fix these issues in your settings.env file and try again"
+        exit 1
+    fi
+
+    log_success "✅ Core configuration validation passed"
+}
+
+# BEST PRACTICE: Validate backup configuration before enabling service
+validate_backup_configuration() {
+    if [[ "${ENABLE_BACKUP:-false}" != "true" ]]; then
+        return 0  # Backup disabled, nothing to validate
+    fi
+
+    log_info "Validating backup configuration..."
+
+    local rclone_config="./backup/config/rclone.conf"
+    local backup_remote="${BACKUP_REMOTE:-}"
+    local backup_passphrase="${BACKUP_PASSPHRASE:-}"
+    local errors=()
+
+    # Check required variables
+    if [[ -z "$backup_remote" ]]; then
+        errors+=("❌ BACKUP_REMOTE is required when ENABLE_BACKUP=true")
+    fi
+
+    if [[ -z "$backup_passphrase" ]]; then
+        errors+=("❌ BACKUP_PASSPHRASE is required when ENABLE_BACKUP=true")
+        errors+=("   Generate with: openssl rand -base64 32")
+    fi
+
+    # Check if rclone config exists and has content
+    if [[ ! -f "$rclone_config" ]] || [[ ! -s "$rclone_config" ]]; then
+        errors+=("❌ rclone configuration not found or empty: $rclone_config")
+        errors+=("   Configure with: docker compose run --rm bw_backup rclone config")
+    elif [[ -n "$backup_remote" ]]; then
+        # Check if specified remote exists in config
+        if ! grep -q "^\[$backup_remote\]" "$rclone_config"; then
+            errors+=("❌ Backup remote '$backup_remote' not found in rclone.conf")
+            local available_remotes
+            available_remotes=$(grep "^\[" "$rclone_config" | tr -d '[]' || echo "none")
+            errors+=("   Available remotes: $available_remotes")
+        fi
+    fi
+
+    if [[ ${#errors[@]} -gt 0 ]]; then
+        log_warning "Backup configuration errors found:"
+        printf '  %s\n' "${errors[@]}"
+        log_warning "🔧 Disabling backup profile until issues are resolved"
+        export ENABLE_BACKUP=false
+        return 1
+    fi
+
+    log_success "✅ Backup configuration validated"
+    return 0
+}
+
+# BEST PRACTICE: Validate DNS configuration before enabling service
+validate_dns_configuration() {
+    if [[ "${ENABLE_DNS:-false}" != "true" ]]; then
+        return 0  # DNS disabled, nothing to validate
+    fi
+
+    log_info "Validating DNS configuration..."
+
+    local errors=()
+    local required_dns_vars=("DDCLIENT_HOST" "DDCLIENT_PASSWORD")
+
+    for var in "${required_dns_vars[@]}"; do
+        if [[ -z "${!var:-}" ]]; then
+            errors+=("❌ $var is required when ENABLE_DNS=true")
+        fi
+    done
+
+    if [[ ${#errors[@]} -gt 0 ]]; then
+        log_warning "DNS configuration errors found:"
+        printf '  %s\n' "${errors[@]}"
+        log_warning "🔧 Disabling DNS profile until issues are resolved"
+        export ENABLE_DNS=false
+        return 1
+    fi
+
+    log_success "✅ DNS configuration validated"
+    return 0
+}
+
+# BEST PRACTICE: Validate monitoring configuration before enabling service
+validate_monitoring_configuration() {
+    if [[ "${ENABLE_MONITORING:-false}" != "true" ]]; then
+        return 0  # Monitoring disabled, nothing to validate
+    fi
+
+    log_info "Validating monitoring configuration..."
+
+    local has_email_config=false
+    local has_webhook_config=false
+    local errors=()
+
+    # Check for email alert configuration
+    if [[ -n "${SMTP_HOST:-}" && -n "${ALERT_EMAIL:-}" && -n "${SMTP_FROM:-}" ]]; then
+        has_email_config=true
+        log_info "📧 Email alerts configured"
+    fi
+
+    # Check for webhook alert configuration
+    if [[ -n "${WEBHOOK_URL:-}" ]]; then
+        has_webhook_config=true
+        log_info "🔗 Webhook alerts configured"
+    fi
+
+    # Require at least one alert destination
+    if [[ "$has_email_config" == "false" && "$has_webhook_config" == "false" ]]; then
+        errors+=("❌ Monitoring enabled but no alert destinations configured")
+        errors+=("   Required: ALERT_EMAIL + SMTP config OR WEBHOOK_URL")
+    fi
+
+    if [[ ${#errors[@]} -gt 0 ]]; then
+        log_warning "Monitoring configuration errors found:"
+        printf '  %s\n' "${errors[@]}"
+        log_warning "🔧 Disabling monitoring profile until issues are resolved"
+        export ENABLE_MONITORING=false
+        return 1
+    fi
+
+    log_success "✅ Monitoring configuration validated"
+    return 0
 }
 
 # ================================
 # DIRECTORY STRUCTURE CREATION
 # ================================
 
-# Create all required directories with proper permissions
 create_directory_structure() {
     log_info "Creating directory structure..."
 
@@ -111,7 +287,6 @@ create_directory_structure() {
     log_success "Directory structure created successfully"
 }
 
-# Validate directory structure exists and is accessible
 validate_directory_structure() {
     log_info "Validating directory structure..."
 
@@ -143,27 +318,24 @@ validate_directory_structure() {
 }
 
 # ================================
-# PROFILE MANAGEMENT FUNCTIONS
+# PROFILE MANAGEMENT WITH VALIDATION
 # ================================
 
-# Determine which profiles to activate based on configuration
 determine_active_profiles() {
     local -a profiles=()
 
-    log_info "Determining active service profiles..."
+    log_step "Determining active service profiles with validation..."
 
-    # Backup profile
-    if [[ "${ENABLE_BACKUP:-false}" == "true" ]]; then
+    # Validate and enable backup profile
+    if validate_backup_configuration; then
         profiles+=(--profile backup)
-        log_success "✅ Backup profile enabled"
-
-        # Prepare backup configuration directory
+        log_success "✅ Backup profile enabled and validated"
         prepare_backup_config
     else
         log_info "ℹ️  Backup profile disabled"
     fi
 
-    # Security profile (fail2ban)
+    # Security profile (minimal requirements)
     if [[ "${ENABLE_SECURITY:-true}" == "true" ]]; then
         profiles+=(--profile security)
         log_success "✅ Security profile enabled (fail2ban)"
@@ -171,20 +343,28 @@ determine_active_profiles() {
         log_info "ℹ️  Security profile disabled"
     fi
 
-    # DNS profile (ddclient)
-    if [[ "${ENABLE_DNS:-false}" == "true" ]]; then
+    # Validate and enable DNS profile
+    if validate_dns_configuration; then
         profiles+=(--profile dns)
-        log_success "✅ DNS profile enabled (ddclient)"
+        log_success "✅ DNS profile enabled and validated (ddclient)"
     else
         log_info "ℹ️  DNS profile disabled"
     fi
 
-    # Maintenance profile (watchtower)
+    # Maintenance profile (minimal requirements)
     if [[ "${ENABLE_MAINTENANCE:-true}" == "true" ]]; then
         profiles+=(--profile maintenance)
         log_success "✅ Maintenance profile enabled (watchtower)"
     else
         log_info "ℹ️  Maintenance profile disabled"
+    fi
+
+    # Validate and enable monitoring profile
+    if validate_monitoring_configuration; then
+        profiles+=(--profile monitoring)
+        log_success "✅ Monitoring profile enabled and validated"
+    else
+        log_info "ℹ️  Monitoring profile disabled"
     fi
 
     # Development profile (future)
@@ -203,7 +383,6 @@ determine_active_profiles() {
     fi
 }
 
-# Enhanced backup configuration with standardized paths
 prepare_backup_config() {
     local config_dir="${RCLONE_CONFIG_DIR:-./backup/config}"
     local config_file="$config_dir/rclone.conf"
@@ -216,16 +395,16 @@ prepare_backup_config() {
     mkdir -p "./backup/templates"
     chmod 700 "$config_dir"
 
-    # Create rclone.conf if it doesn't exist
+    # Create rclone.conf template if it doesn't exist
     if [[ ! -f "$config_file" ]]; then
         if [[ -f "$template_file" ]]; then
             log_info "Creating rclone.conf from template"
             cp "$template_file" "$config_file"
         else
-            log_info "Creating empty rclone.conf (template not found)"
+            log_info "Creating rclone.conf template"
             cat > "$config_file" << 'EOF'
 # rclone configuration file
-# Add your remote configurations here
+# Configure your backup destinations here
 # 
 # Example for Backblaze B2:
 # [b2-backup]
@@ -241,29 +420,13 @@ prepare_backup_config() {
 # secret_access_key = your-secret-key
 # region = us-east-1
 # 
-# Example for Google Cloud Storage:
-# [gcs-backup]
-# type = google cloud storage
-# service_account_file = /path/to/service-account.json
-# project_number = your-project-number
-# 
-# Run 'docker compose exec bw_backup rclone config' to configure interactively
+# Configure interactively with:
+# docker compose run --rm bw_backup rclone config
 EOF
         fi
         chmod 600 "$config_file"
-        log_warning "⚠️  Empty rclone.conf created. Configure your backup remote before enabling backups."
-    else
-        log_success "✅ rclone.conf exists"
     fi
 
-    # Validate rclone configuration if backup remote is specified
-    if [[ -n "${BACKUP_REMOTE:-}" ]]; then
-        log_info "Validating backup remote configuration..."
-        # Note: Full validation happens inside the container
-        log_info "Backup remote configured: ${BACKUP_REMOTE}"
-    fi
-
-    # Validate backup paths consistency
     log_info "SQLite database path (host): $SQLITE_DB_PATH"
     log_info "SQLite database path (container): $SQLITE_DB_CONTAINER_PATH"
 
@@ -276,9 +439,8 @@ EOF
 # ENHANCED MAIN FUNCTIONS
 # ================================
 
-# Enhanced initialization with directory creation
 initialize() {
-    log_info "Initializing VaultWarden-OCI startup..."
+    log_info "Initializing VaultWarden-OCI startup with validation..."
 
     # Create directory structure first
     create_directory_structure
@@ -297,17 +459,20 @@ initialize() {
         set +a
         log_success "Configuration loaded from ${SETTINGS_FILE:-./settings.env}"
     else
-        log_warning "Configuration file not found: ${SETTINGS_FILE:-./settings.env}"
-        log_info "Using environment variables or defaults"
+        log_error "Configuration file not found: ${SETTINGS_FILE:-./settings.env}"
+        echo "🔧 Create settings.env from settings.env.example first"
+        exit 1
     fi
 
-    # Determine active profiles based on configuration
+    # BEST PRACTICE: Validate core configuration
+    validate_core_configuration
+
+    # Determine active profiles based on validated configuration
     determine_active_profiles
 
     log_success "Initialization complete"
 }
 
-# Setup configuration with enhanced validation
 setup_configuration() {
     log_info "Setting up configuration..."
 
@@ -336,9 +501,8 @@ setup_configuration() {
     log_success "Configuration setup complete"
 }
 
-# Deploy stack with profile support
 deploy_stack() {
-    log_info "Deploying container stack with profiles..."
+    log_info "Deploying container stack with validated profiles..."
 
     # Build Docker Compose command with profiles
     local compose_cmd=(docker compose --env-file "$COMPOSE_ENV_FILE")
@@ -379,13 +543,12 @@ deploy_stack() {
     if perform_health_check; then
         log_success "✅ All services are healthy"
     else
-        log_warning "⚠️  Some services may have issues"
+        log_warning "⚠️  Some services may have issues (check logs)"
     fi
 
     log_success "Stack deployment complete"
 }
 
-# Wait for profile-specific services
 wait_for_profile_services() {
     log_info "Checking profile service status..."
 
@@ -416,6 +579,15 @@ wait_for_profile_services() {
         fi
     fi
 
+    # Check monitoring service
+    if [[ "${ENABLE_MONITORING:-false}" == "true" ]]; then
+        if wait_for_service "bw_monitoring" 60 5; then
+            log_success "✅ Monitoring service is ready"
+        else
+            log_warning "⚠️  Monitoring service may not be fully ready"
+        fi
+    fi
+
     # Check maintenance services
     if [[ "${ENABLE_MAINTENANCE:-true}" == "true" ]]; then
         if wait_for_service "bw_watchtower" 30 5; then
@@ -426,7 +598,6 @@ wait_for_profile_services() {
     fi
 }
 
-# Enhanced status display
 show_status() {
     log_info "VaultWarden-OCI Status:"
     echo "========================================"
@@ -437,20 +608,18 @@ show_status() {
         source "$COMPOSE_ENV_FILE"
         set +a
 
-        # Show domain and synthesized URL
-        local display_url
-        if [[ -n "${DOMAIN:-}" ]]; then
-            display_url="$DOMAIN"
-        elif [[ -n "${APP_DOMAIN:-}" ]]; then
-            display_url="https://$APP_DOMAIN"
-        else
-            display_url="Not configured"
-        fi
-
         echo "🌐 Domain: ${APP_DOMAIN:-'Not configured'}"
-        echo "🔗 URL: $display_url"
+        echo "🔗 URL: ${DOMAIN:-'Not configured'}"
         echo "⚙️  Profiles: ${ACTIVE_PROFILES[*]:-'core only'}"
         echo "💾 SQLite DB: $SQLITE_DB_PATH"
+
+        # Show validation status
+        echo ""
+        echo "📋 Configuration Status:"
+        [[ -n "${ADMIN_TOKEN:-}" ]] && echo "  ✅ Admin token configured" || echo "  ❌ Admin token missing"
+        [[ -n "${SMTP_HOST:-}" ]] && echo "  ✅ SMTP configured" || echo "  ⚠️  SMTP not configured (optional)"
+        [[ "${ENABLE_BACKUP:-false}" == "true" ]] && echo "  ✅ Backups enabled" || echo "  ℹ️  Backups disabled"
+        [[ "${ENABLE_MONITORING:-false}" == "true" ]] && echo "  ✅ Monitoring enabled" || echo "  ℹ️  Monitoring disabled"
     fi
 
     echo ""
@@ -472,13 +641,13 @@ show_status() {
     echo "  ./perf-monitor.sh  - Performance monitoring"
     echo "  ./alerts.sh        - Alert management"
     echo ""
-    echo "  Profile Management:"
-    echo "  docker compose --profile backup ps     - Backup service status"
-    echo "  docker compose --profile security ps   - Security service status"
+    echo "  Configuration Management:"
+    echo "  ./oci-setup.sh setup               - Configure OCI Vault integration"
+    echo "  docker compose logs <service>      - View service logs"
 }
 
 # ================================
-# ENHANCED MAIN EXECUTION
+# MAIN EXECUTION WITH BEST PRACTICES
 # ================================
 
 main() {
@@ -494,13 +663,12 @@ main() {
                 shift
                 ;;
             --profile)
-                # Override profile selection
                 export FORCE_PROFILES="$2"
                 shift 2
                 ;;
             --help|-h)
                 cat <<EOF
-VaultWarden-OCI Enhanced Startup Script
+VaultWarden-OCI Enhanced Startup Script (Best Practices Edition)
 
 Usage: $0 [OPTIONS]
 
@@ -516,10 +684,11 @@ Environment Variables:
     LOG_FILE            Custom log file path
 
     Profile Control (settings.env):
-    ENABLE_BACKUP       Enable backup services
+    ENABLE_BACKUP       Enable backup services (requires configuration)
     ENABLE_SECURITY     Enable security services (fail2ban)
-    ENABLE_DNS          Enable DNS services (ddclient) 
+    ENABLE_DNS          Enable DNS services (requires configuration)
     ENABLE_MAINTENANCE  Enable maintenance services (watchtower)
+    ENABLE_MONITORING   Enable monitoring services (requires configuration)
 
 Examples:
     $0                                    # Start with auto-detected profiles
@@ -530,17 +699,18 @@ Examples:
 
 Profile Information:
     core        - Essential services (always enabled)
-    backup      - Database backup and restore
+    backup      - Database backup and restore (validated)
     security    - fail2ban intrusion protection
-    dns         - ddclient dynamic DNS updates
+    dns         - ddclient dynamic DNS updates (validated)
     maintenance - watchtower updates
+    monitoring  - system monitoring and alerts (validated)
 
-Enhancements:
-    ✓ Automated directory structure creation
-    ✓ Standardized SQLite database paths
-    ✓ Enhanced backup configuration validation
-    ✓ Improved error handling and fallbacks
-    ✓ Consistent variable naming
+Best Practices Implemented:
+    ✓ Strict dependency validation (no fallbacks)
+    ✓ Configuration validation before service start
+    ✓ Single source of truth for variables
+    ✓ Clear error messages with remediation steps
+    ✓ Graceful service degradation for invalid config
 
 EOF
                 exit 0
@@ -551,13 +721,16 @@ EOF
         esac
     done
 
-    # Main execution flow
-    log_info "🚀 Starting VaultWarden-OCI enhanced deployment..."
+    # Main execution flow with best practices
+    log_info "🚀 Starting VaultWarden-OCI enhanced deployment (Best Practices Edition)..."
+
+    # BEST PRACTICE: Validate environment first
+    validate_environment
+    load_libraries
 
     # Override profiles if forced
     if [[ -n "${FORCE_PROFILES:-}" ]]; then
         log_info "🔧 Using forced profiles: $FORCE_PROFILES"
-        # Convert comma-separated profiles to array
         IFS=',' read -ra FORCED_PROFILE_ARRAY <<< "$FORCE_PROFILES"
         ACTIVE_PROFILES=()
         for profile in "${FORCED_PROFILE_ARRAY[@]}"; do
@@ -573,13 +746,16 @@ EOF
     log_success "🎉 VaultWarden-OCI startup completed successfully!"
     log_info "📋 Log file: $LOG_FILE"
 
-    # Show next steps with updated path information
+    # Show next steps with validation status
     echo ""
     echo "🎯 Next Steps:"
     echo "1. Configure your domain DNS to point to this server"
-    echo "2. Set up SMTP credentials in settings.env for email notifications"
-    if [[ "${ENABLE_BACKUP:-false}" == "true" ]] && [[ -n "${BACKUP_REMOTE:-}" ]]; then
-        echo "3. Configure rclone remote for backups: docker compose exec bw_backup rclone config"
+    if [[ -z "${SMTP_HOST:-}" ]]; then
+        echo "2. Configure SMTP settings in settings.env for email notifications"
+    fi
+    if [[ "${ENABLE_BACKUP:-false}" == "false" ]]; then
+        echo "3. Configure backup: Set BACKUP_REMOTE, BACKUP_PASSPHRASE, and run:"
+        echo "   docker compose run --rm bw_backup rclone config"
     fi
     echo "4. Access your vault at: ${DOMAIN:-https://vault.yourdomain.com}"
     echo "5. SQLite database location: $SQLITE_DB_PATH"
