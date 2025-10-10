@@ -15,7 +15,7 @@
     }
 }
 
-{$APP_DOMAIN:vault.localhost} {
+{$VAULTWARDEN_DOMAIN:vault.localhost} {
     # Compression between CloudFlare and origin server
     # Safe to enable - helps with bandwidth efficiency on OCI A1
     encode zstd gzip
