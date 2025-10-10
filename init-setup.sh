@@ -118,19 +118,21 @@ install_rclone() {
 
 install_oci_cli() {
     log_step "OCI CLI Setup"
-    local setup_oci; read -p "Do you want to install the OCI CLI for Vault integration? (y/N): " -n 1 -r setup_oci; echo
-    if [[ ! "$setup_oci" =~ ^[Yy]$ ]]; then log_info "Skipping OCI CLI."; return 0; fi
-    
     if command_exists oci; then
-        local current_version; current_version=$(oci --version || echo "0")
-        if version_compare "$current_version" "$OCI_CLI_VERSION"; then
-            log_success "OCI CLI v${current_version} is up to date."; return 0;
-        fi
+        log_info "OCI CLI is already installed. Skipping."
+        return 0
     fi
 
+    local setup_oci
+    read -p "Do you want to install the OCI CLI for Vault integration? (y/N): " -n 1 -r setup_oci; echo
+    if [[ ! "$setup_oci" =~ ^[Yy]$ ]]; then
+        log_info "Skipping OCI CLI installation."
+        return 0
+    fi
+    
     log_info "Installing OCI CLI via official script..."
     curl -sL https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh | bash -s -- --accept-all-defaults --quiet
-    log_success "OCI CLI installed. Run './oci-setup.sh' to configure it."
+    log_success "OCI CLI installed. The wizard will help you configure it."
 }
 
 # --- Project & Maintenance Configuration ---
@@ -139,7 +141,7 @@ setup_project() {
     log_step "Project Initialization"
     if [[ ! -f "settings.env" && -f "settings.env.example" ]]; then
         cp settings.env.example settings.env; chmod 600 settings.env
-        log_warning "settings.env created from template. You MUST edit it."
+        log_warning "settings.env created from template. The wizard will now guide you through it."
     fi
 }
 
@@ -223,7 +225,7 @@ EOF
     fi
     
     log_step "Setup Complete!"
-    log_success "Your system is now ready. Please review settings.env and run ./startup.sh"
+    log_success "Your system is now ready. Review settings.env and run ./startup.sh"
 }
 
 main "$@"
