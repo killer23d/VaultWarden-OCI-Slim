@@ -28,21 +28,21 @@ export MONITORING_CONFIG_VERSION="3.0"
 # Load configuration from external files (priority order)
 load_monitoring_configuration() {
     local config_sources=()
-    
+
     # 1. External configuration files (highest priority)
     local config_files=(
         "$(dirname "${BASH_SOURCE[0]}")/../config/performance-targets.conf"
         "$(dirname "${BASH_SOURCE[0]}")/../config/alert-thresholds.conf" 
         "$(dirname "${BASH_SOURCE[0]}")/../config/monitoring-intervals.conf"
     )
-    
+
     for config_file in "${config_files[@]}"; do
         if [[ -f "$config_file" ]]; then
             source "$config_file"
             config_sources+=("$(basename "$config_file")")
         fi
     done
-    
+
     # 2. Environment variables from settings.env/Docker Compose (medium priority)
     if [[ -f "$(dirname "${BASH_SOURCE[0]}")/../settings.env" ]]; then
         set -a
@@ -50,10 +50,10 @@ load_monitoring_configuration() {
         set +a
         config_sources+=("settings.env")
     fi
-    
+
     # 3. Fallback defaults (lowest priority)
     config_sources+=("built-in defaults")
-    
+
     export MONITORING_CONFIG_SOURCES="${config_sources[*]}"
 }
 
@@ -173,26 +173,26 @@ export SMTP_FROM="${SMTP_FROM:-}"
 # Validate threshold configuration consistency
 validate_monitoring_thresholds() {
     local errors=()
-    
+
     # Check threshold ordering (warning < alert < critical)
     if [[ $CPU_WARNING_THRESHOLD -ge $CPU_ALERT_THRESHOLD ]]; then
         errors+=("CPU_WARNING_THRESHOLD ($CPU_WARNING_THRESHOLD) should be less than CPU_ALERT_THRESHOLD ($CPU_ALERT_THRESHOLD)")
     fi
-    
+
     if [[ $CPU_ALERT_THRESHOLD -ge $CPU_CRITICAL_THRESHOLD ]]; then
         errors+=("CPU_ALERT_THRESHOLD ($CPU_ALERT_THRESHOLD) should be less than CPU_CRITICAL_THRESHOLD ($CPU_CRITICAL_THRESHOLD)")
     fi
-    
+
     # Validate SQLite thresholds
     if [[ $SQLITE_SIZE_WARNING_MB -ge $SQLITE_SIZE_ALERT_MB ]]; then
         errors+=("SQLITE_SIZE_WARNING_MB should be less than SQLITE_SIZE_ALERT_MB")
     fi
-    
+
     # Check 1 OCPU load thresholds
-    if (( $(echo "$LOAD_CRITICAL_THRESHOLD > 3.0" | bc -l 2>/dev/null || echo "0") )); then
+    if command -v bc >/dev/null 2>&1 && (( $(echo "$LOAD_CRITICAL_THRESHOLD > 3.0" | bc -l) )); then
         errors+=("LOAD_CRITICAL_THRESHOLD ($LOAD_CRITICAL_THRESHOLD) is too high for 1 OCPU (recommend <2.0)")
     fi
-    
+
     if [[ ${#errors[@]} -gt 0 ]]; then
         if command -v log_error >/dev/null 2>&1; then
             log_error "Monitoring threshold validation failed:"
@@ -207,7 +207,7 @@ validate_monitoring_thresholds() {
         fi
         return 1
     fi
-    
+
     return 0
 }
 
@@ -218,12 +218,12 @@ validate_monitoring_thresholds() {
 # Evaluate CPU usage against unified thresholds
 evaluate_cpu_threshold() {
     local cpu_usage="$1"
-    
+
     if ! command -v bc >/dev/null 2>&1; then
         echo "warning:bc_unavailable"
         return 1
     fi
-    
+
     if (( $(echo "$cpu_usage > $CPU_CRITICAL_THRESHOLD" | bc -l) )); then
         echo "critical"
     elif (( $(echo "$cpu_usage > $CPU_ALERT_THRESHOLD" | bc -l) )); then
@@ -238,12 +238,12 @@ evaluate_cpu_threshold() {
 # Evaluate memory usage against unified thresholds
 evaluate_memory_threshold() {
     local mem_usage="$1"
-    
+
     if ! command -v bc >/dev/null 2>&1; then
         echo "warning:bc_unavailable"
         return 1
     fi
-    
+
     if (( $(echo "$mem_usage > $MEMORY_CRITICAL_THRESHOLD" | bc -l) )); then
         echo "critical"
     elif (( $(echo "$mem_usage > $MEMORY_ALERT_THRESHOLD" | bc -l) )); then
@@ -258,12 +258,12 @@ evaluate_memory_threshold() {
 # Evaluate load average against unified thresholds (1 OCPU context)
 evaluate_load_threshold() {
     local load_avg="$1"
-    
+
     if ! command -v bc >/dev/null 2>&1; then
         echo "warning:bc_unavailable"
         return 1
     fi
-    
+
     if (( $(echo "$load_avg > $LOAD_CRITICAL_THRESHOLD" | bc -l) )); then
         echo "critical"
     elif (( $(echo "$load_avg > $LOAD_ALERT_THRESHOLD" | bc -l) )); then
@@ -275,15 +275,30 @@ evaluate_load_threshold() {
     fi
 }
 
+# Evaluate disk usage threshold
+evaluate_disk_threshold() {
+    local disk_usage="$1"
+
+    if [[ ${disk_usage:-0} -gt ${DISK_CRITICAL_THRESHOLD} ]]; then
+        echo "critical"
+    elif [[ ${disk_usage:-0} -gt ${DISK_ALERT_THRESHOLD} ]]; then
+        echo "alert"
+    elif [[ ${disk_usage:-0} -gt ${DISK_WARNING_THRESHOLD} ]]; then
+        echo "warning"
+    else
+        echo "normal"
+    fi
+}
+
 # Evaluate SQLite database size against unified thresholds
 evaluate_sqlite_size_threshold() {
     local db_size_mb="$1"
-    
+
     if ! command -v bc >/dev/null 2>&1; then
         echo "warning:bc_unavailable"
         return 1
     fi
-    
+
     if (( $(echo "$db_size_mb > $SQLITE_SIZE_CRITICAL_MB" | bc -l) )); then
         echo "critical"
     elif (( $(echo "$db_size_mb > $SQLITE_SIZE_ALERT_MB" | bc -l) )); then
@@ -298,12 +313,12 @@ evaluate_sqlite_size_threshold() {
 # Evaluate SQLite fragmentation against unified thresholds
 evaluate_fragmentation_threshold() {
     local fragmentation_ratio="$1"
-    
+
     if ! command -v bc >/dev/null 2>&1; then
         echo "warning:bc_unavailable"
         return 1
     fi
-    
+
     if (( $(echo "$fragmentation_ratio > $FRAGMENTATION_CRITICAL_RATIO" | bc -l) )); then
         echo "critical"
     elif (( $(echo "$fragmentation_ratio > $FRAGMENTATION_ALERT_RATIO" | bc -l) )); then
@@ -322,25 +337,25 @@ evaluate_fragmentation_threshold() {
 # Standardized system metrics collection
 get_unified_system_metrics() {
     local timestamp cpu_usage mem_usage_pct load_1m disk_usage_pct
-    
+
     timestamp=$(date -Iseconds)
-    
+
     # CPU usage (standardized method)
     cpu_usage=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1 || echo "0")
-    
+
     # Memory usage (standardized method)
     if command -v free >/dev/null 2>&1; then
         mem_usage_pct=$(free | awk '/^Mem:/{printf "%.1f", $3*100/$2}' || echo "0")
     else
         mem_usage_pct="0"
     fi
-    
+
     # Load average (standardized method)
     load_1m=$(uptime | awk -F'load average:' '{print $2}' | awk '{print $1}' | tr -d ',' || echo "0")
-    
+
     # Disk usage (standardized method)
     disk_usage_pct=$(df . | awk 'NR==2 {print $5}' | sed 's/%//' || echo "0")
-    
+
     # Output in consistent format
     cat <<EOF
 timestamp=$timestamp
@@ -353,21 +368,6 @@ load_threshold=$(evaluate_load_threshold "$load_1m")
 disk_usage_pct=$disk_usage_pct
 disk_threshold=$(evaluate_disk_threshold "$disk_usage_pct")
 EOF
-}
-
-# Evaluate disk usage threshold
-evaluate_disk_threshold() {
-    local disk_usage="$1"
-    
-    if [[ ${disk_usage:-0} -gt ${DISK_CRITICAL_THRESHOLD} ]]; then
-        echo "critical"
-    elif [[ ${disk_usage:-0} -gt ${DISK_ALERT_THRESHOLD} ]]; then
-        echo "alert"
-    elif [[ ${disk_usage:-0} -gt ${DISK_WARNING_THRESHOLD} ]]; then
-        echo "warning"
-    else
-        echo "normal"
-    fi
 }
 
 # ================================
@@ -425,7 +425,7 @@ init_monitoring_config() {
         fi
         return 1
     fi
-    
+
     # Create necessary directories
     local dirs=("$LOG_DIR" "$PERF_LOG_DIR")
     for dir in "${dirs[@]}"; do
@@ -439,12 +439,12 @@ init_monitoring_config() {
             }
         fi
     done
-    
+
     if command -v log_debug >/dev/null 2>&1; then
         log_debug "Monitoring configuration initialized (v$MONITORING_CONFIG_VERSION)"
         log_debug "Configuration sources: $MONITORING_CONFIG_SOURCES"
     fi
-    
+
     return 0
 }
 
