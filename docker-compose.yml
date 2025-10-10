@@ -55,8 +55,8 @@ services:
       - PUSH_INSTALLATION_ID=${PUSH_INSTALLATION_ID:-}
       - PUSH_INSTALLATION_KEY=${PUSH_INSTALLATION_KEY:-}
       - PUSH_RELAY_URI=${PUSH_RELAY_URI:-https://push.bitwarden.com}
-      # Domain Configuration
-      - DOMAIN=${DOMAIN:?DOMAIN must be set in settings.env}
+      # Domain Configuration - CONSOLIDATED to single variable
+      - DOMAIN=https://${VAULTWARDEN_DOMAIN:?VAULTWARDEN_DOMAIN must be set in settings.env}
     logging:
       driver: "json-file"
       options:
@@ -515,3 +515,9 @@ networks:
 # ✓ External configuration file support for advanced users
 # ✓ Built-in validation prevents configuration errors
 # ✓ Framework integration with graceful fallbacks
+#
+# DOMAIN CONSOLIDATION UPDATE:
+# ✅ CONSOLIDATED: Single VAULTWARDEN_DOMAIN variable replaces DOMAIN_NAME, APP_DOMAIN, DOMAIN
+# ✅ SIMPLIFIED: Users only need to set one domain variable
+# ✅ AUTOMATIC: DOMAIN=https://${VAULTWARDEN_DOMAIN} constructed automatically
+# ✅ CONSISTENT: All services use the same domain source of truth
