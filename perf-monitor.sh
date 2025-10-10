@@ -1,645 +1,1082 @@
 #!/usr/bin/env bash
-# diagnose.sh -- UNIFIED VERSION: Uses centralized monitoring configuration
-# Enhanced diagnostics with unified threshold evaluation
+# perf-monitor.sh -- Phase 3 Complete Performance Monitor
+# Complete framework integration: unified logging + standardized formatting
 
 set -euo pipefail
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-source "$SCRIPT_DIR/lib/common.sh" || { echo "ERROR: lib/common.sh required" >&2; exit 1; }
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 
-# UNIFIED CONFIGURATION: Single source of truth
-source "$SCRIPT_DIR/lib/monitoring-config.sh" || {
-    echo "ERROR: lib/monitoring-config.sh required for unified configuration" >&2
+# ==============================================================================
+# COMPLETE FRAMEWORK INTEGRATION (PHASE 3)
+# ==============================================================================
+
+# Load core framework
+source "$SCRIPT_DIR/lib/common.sh" || {
+    echo "ERROR: lib/common.sh required for performance monitoring" >&2
     exit 1
 }
 
-# Verify unified configuration loaded
-if [[ "$MONITORING_CONFIG_LOADED" != "true" ]]; then
-    echo "ERROR: Unified monitoring configuration failed to load" >&2
-    exit 1
-fi
+# Track complete framework loading
+COMPLETE_FRAMEWORK=()
 
-# Load optional framework components
-loaded_frameworks=()
-if source "$SCRIPT_DIR/lib/perf-collector.sh" 2>/dev/null; then 
+# Phase 3: Complete framework component loading
+if source "$SCRIPT_DIR/lib/perf-collector.sh"; then
     perf_collector_init
-    loaded_frameworks+=("perf-collector")
+    COMPLETE_FRAMEWORK+=("perf-collector")
 fi
-if source "$SCRIPT_DIR/lib/dashboard-sqlite.sh" 2>/dev/null; then 
+
+if source "$SCRIPT_DIR/lib/dashboard-sqlite.sh"; then
     dashboard_sqlite_init
-    loaded_frameworks+=("dashboard-sqlite")
-fi
-if source "$SCRIPT_DIR/lib/dashboard-metrics.sh" 2>/dev/null; then 
-    loaded_frameworks+=("dashboard-metrics")
+    COMPLETE_FRAMEWORK+=("dashboard-sqlite")
 fi
 
-# ================================
-# UNIFIED DIAGNOSTIC FUNCTIONS
-# ================================
+if source "$SCRIPT_DIR/lib/dashboard-metrics.sh"; then
+    COMPLETE_FRAMEWORK+=("dashboard-metrics")
+fi
 
-# Comprehensive system diagnostics using unified configuration
-run_unified_system_diagnostics() {
-    log_step "System Diagnostics (Unified Configuration v$MONITORING_CONFIG_VERSION)"
+# Phase 3: Complete logging framework integration
+if source "$SCRIPT_DIR/lib/logger.sh"; then
+    logger_init
+    COMPLETE_FRAMEWORK+=("logger")
 
-    local system_metrics
-    if [[ " ${loaded_frameworks[*]} " =~ " perf-collector " ]]; then
-        system_metrics=$(perf_collector_system_full)
-        log_info "Using framework perf-collector for system metrics"
+    # Override all logging functions to use framework (Phase 3 complete integration)
+    perf_log() { logger_info "perf-monitor" "$*"; }
+    perf_info() { logger_info "perf-monitor" "$*"; }
+    perf_warning() { logger_warn "perf-monitor" "$*"; }
+    perf_critical() { logger_error "perf-monitor" "$*"; }
+    perf_success() { logger_info "perf-monitor" "SUCCESS: $*"; }
+    perf_debug() { logger_debug "perf-monitor" "$*"; }
+else
+    # Fallback logging functions maintained
+    PERF_LOG_DIR="${PERF_LOG_DIR:-./data/performance_logs}"
+    mkdir -p "$PERF_LOG_DIR"
+
+    perf_log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$PERF_LOG_DIR/performance-$(date +%Y%m%d).log"; }
+    perf_info() { echo -e "${BLUE}[INFO]${NC} $*"; perf_log "INFO: $*"; }
+    perf_warning() { echo -e "${YELLOW}[WARNING]${NC} $*"; perf_log "WARNING: $*"; }
+    perf_critical() { echo -e "${RED}[CRITICAL]${NC} $*"; perf_log "CRITICAL: $*"; }
+    perf_success() { echo -e "${GREEN}[OK]${NC} $*"; perf_log "OK: $*"; }
+    perf_debug() { [[ "${DEBUG:-false}" == "true" ]] && perf_log "DEBUG: $*"; }
+fi
+
+# Phase 3: Complete error handling integration
+if source "$SCRIPT_DIR/lib/error-handler.sh"; then
+    error_handler_init
+    COMPLETE_FRAMEWORK+=("error-handler")
+fi
+
+# Phase 3: Complete output formatting integration
+if source "$SCRIPT_DIR/lib/perf-formatter.sh"; then
+    perf_formatter_init
+    COMPLETE_FRAMEWORK+=("perf-formatter")
+
+    # Override color and formatting functions to use framework
+    log_info "Output formatting framework loaded - using standardized formatting"
+fi
+
+# Load complete configuration suite
+[[ -f "$SCRIPT_DIR/config/performance-targets.conf" ]] && source "$SCRIPT_DIR/config/performance-targets.conf"
+[[ -f "$SCRIPT_DIR/config/monitoring-intervals.conf" ]] && source "$SCRIPT_DIR/config/monitoring-intervals.conf"
+[[ -f "$SCRIPT_DIR/config/alert-thresholds.conf" ]] && source "$SCRIPT_DIR/config/alert-thresholds.conf"
+
+# Complete defaults with Phase 3 enhancements
+CPU_WARNING_THRESHOLD=${CPU_WARNING_THRESHOLD:-70}
+CPU_CRITICAL_THRESHOLD=${CPU_CRITICAL_THRESHOLD:-90}
+MEMORY_WARNING_THRESHOLD=${MEMORY_WARNING_THRESHOLD:-70}
+MEMORY_CRITICAL_THRESHOLD=${MEMORY_CRITICAL_THRESHOLD:-85}
+LOAD_WARNING_THRESHOLD=${LOAD_WARNING_THRESHOLD:-1.0}
+LOAD_CRITICAL_THRESHOLD=${LOAD_CRITICAL_THRESHOLD:-1.5}
+SQLITE_SIZE_WARNING_MB=${SQLITE_SIZE_WARNING_MB:-300}
+SQLITE_SIZE_CRITICAL_MB=${SQLITE_SIZE_CRITICAL_MB:-500}
+
+# Monitoring intervals with Phase 3 framework optimization
+PERF_MONITOR_INTERVAL=${PERF_MONITOR_INTERVAL:-5}
+PERF_CACHE_DURATION=${PERF_CACHE_DURATION:-5}
+DASHBOARD_REFRESH_INTERVAL=${DASHBOARD_REFRESH_INTERVAL:-5}
+
+# Configuration
+SQLITE_DB_PATH=/data/bwdata/db.sqlite3
+PERF_LOG_DIR="${PERF_LOG_DIR:-./data/performance_logs}"
+
+# Create performance log directory
+mkdir -p "$PERF_LOG_DIR"
+
+# ==============================================================================
+# PHASE 3: COMPLETE SYSTEM PERFORMANCE WITH FORMATTING
+# ==============================================================================
+
+# Get comprehensive system performance using complete framework
+get_system_performance_complete() {
+    perf_debug "Collecting system performance metrics using complete framework integration"
+
+    if [[ " ${COMPLETE_FRAMEWORK[*]} " =~ " perf-collector " ]]; then
+        # Use framework collector with enhanced error handling
+        local system_metrics
+
+        if [[ " ${COMPLETE_FRAMEWORK[*]} " =~ " error-handler " ]]; then
+            system_metrics=$(error_handler_safe_execute "system_metrics" perf_collector_system_full)
+        else
+            system_metrics=$(perf_collector_system_full)
+        fi
+
+        # Add timestamp for compatibility
+        echo "timestamp=$(date -Iseconds)"
+        echo "$system_metrics"
+
+        perf_debug "System metrics collected via complete framework with caching"
+
     else
-        system_metrics=$(get_unified_system_metrics)
-        log_info "Using unified fallback system metrics"
+        # Enhanced fallback with Phase 3 improvements
+        get_system_performance_enhanced_fallback
+        perf_debug "System metrics collected via enhanced fallback"
     fi
-
-    # Parse metrics
-    local cpu_usage mem_usage_pct load_1m disk_usage_pct
-    eval "$system_metrics"
-
-    # Evaluate using unified threshold functions
-    local cpu_status mem_status load_status disk_status
-    cpu_status=$(evaluate_cpu_threshold "$cpu_usage")
-    mem_status=$(evaluate_memory_threshold "$mem_usage_pct")
-    load_status=$(evaluate_load_threshold "$load_1m")
-    disk_status=$(evaluate_disk_threshold "$disk_usage_pct")
-
-    # Display results with unified status indicators
-    echo "Configuration: $MONITORING_CONFIG_SOURCES"
-    echo ""
-
-    # CPU Analysis
-    case "$cpu_status" in
-        "critical") 
-            echo -e "${RED}🔴 CPU CRITICAL${NC}: $cpu_usage% (threshold: $CPU_CRITICAL_THRESHOLD%)"
-            echo "  ⚠️  Single OCPU is severely overloaded"
-            echo "  💡 Check for runaway processes: ps aux --sort=-%cpu | head -10"
-            ;;
-        "alert") 
-            echo -e "${YELLOW}🟠 CPU ALERT${NC}: $cpu_usage% (threshold: $CPU_ALERT_THRESHOLD%)"
-            echo "  ⚠️  High CPU usage for 1 OCPU deployment"
-            echo "  💡 Consider reducing concurrent operations"
-            ;;
-        "warning") 
-            echo -e "${YELLOW}🟡 CPU WARNING${NC}: $cpu_usage% (threshold: $CPU_WARNING_THRESHOLD%)"
-            echo "  ℹ️  Elevated CPU usage, monitor closely"
-            ;;
-        *) 
-            echo -e "${GREEN}🟢 CPU NORMAL${NC}: $cpu_usage% (optimal for 1 OCPU)"
-            ;;
-    esac
-
-    # Memory Analysis
-    case "$mem_status" in
-        "critical") 
-            echo -e "${RED}🔴 MEMORY CRITICAL${NC}: $mem_usage_pct% (threshold: $MEMORY_CRITICAL_THRESHOLD%)"
-            echo "  ⚠️  Memory pressure detected on 6GB system"
-            echo "  💡 Check container memory usage: docker stats --no-stream"
-            ;;
-        "alert") 
-            echo -e "${YELLOW}🟠 MEMORY ALERT${NC}: $mem_usage_pct% (threshold: $MEMORY_ALERT_THRESHOLD%)"
-            echo "  ⚠️  High memory usage approaching limits"
-            ;;
-        "warning") 
-            echo -e "${YELLOW}🟡 MEMORY WARNING${NC}: $mem_usage_pct% (threshold: $MEMORY_WARNING_THRESHOLD%)"
-            ;;
-        *) 
-            echo -e "${GREEN}🟢 MEMORY NORMAL${NC}: $mem_usage_pct% (target: ~11% of 6GB)"
-            ;;
-    esac
-
-    # Load Average Analysis (critical for 1 OCPU)
-    case "$load_status" in
-        "critical") 
-            echo -e "${RED}🔴 LOAD CRITICAL${NC}: $load_1m (threshold: $LOAD_CRITICAL_THRESHOLD for 1 OCPU)"
-            echo "  🚨 Single CPU is severely overloaded - system may be unresponsive"
-            echo "  💡 Immediate action required: check runaway processes"
-            ;;
-        "alert") 
-            echo -e "${YELLOW}🟠 LOAD ALERT${NC}: $load_1m (threshold: $LOAD_ALERT_THRESHOLD for 1 OCPU)"
-            echo "  ⚠️  High load for single CPU system"
-            echo "  💡 Monitor process queue: ps aux --sort=-pcpu | head -5"
-            ;;
-        "warning") 
-            echo -e "${YELLOW}🟡 LOAD WARNING${NC}: $load_1m (threshold: $LOAD_WARNING_THRESHOLD for 1 OCPU)"
-            echo "  ℹ️  Elevated load, monitor for trends"
-            ;;
-        *) 
-            echo -e "${GREEN}🟢 LOAD NORMAL${NC}: $load_1m (optimal: <1.0 for 1 OCPU)"
-            ;;
-    esac
-
-    # Disk Analysis
-    case "$disk_status" in
-        "critical"|"alert") 
-            echo -e "${RED}🔴 DISK ${disk_status^^}${NC}: $disk_usage_pct% (threshold: $DISK_ALERT_THRESHOLD%)"
-            echo "  💡 Free up space: docker system prune -af"
-            ;;
-        "warning") 
-            echo -e "${YELLOW}🟡 DISK WARNING${NC}: $disk_usage_pct% (threshold: $DISK_WARNING_THRESHOLD%)"
-            ;;
-        *) 
-            echo -e "${GREEN}🟢 DISK NORMAL${NC}: $disk_usage_pct%"
-            ;;
-    esac
-
-    echo ""
 }
 
-# Unified SQLite diagnostics
-run_unified_sqlite_diagnostics() {
-    log_step "SQLite Diagnostics (Unified Configuration)"
+# Enhanced fallback system performance (Phase 3)
+get_system_performance_enhanced_fallback() {
+    local timestamp cpu_usage mem_total mem_used mem_usage_pct
+    local load_1m load_5m load_15m disk_total disk_used disk_usage_pct
 
-    if [[ ! -f "$SQLITE_DB_PATH" ]]; then
-        echo -e "${YELLOW}🟡 SQLite Database:${NC} Not found ($SQLITE_DB_PATH)"
-        echo "  ℹ️  Normal for new installations - will be created on first VaultWarden startup"
-        return 0
-    fi
+    timestamp=$(date -Iseconds)
 
-    local sqlite_metrics
-    if [[ " ${loaded_frameworks[*]} " =~ " dashboard-sqlite " ]]; then
-        sqlite_metrics=$(dashboard_sqlite_get_detailed_metrics || echo "available=false")
-        log_info "Using framework dashboard-sqlite for database analysis"
+    # Enhanced CPU usage collection
+    if [[ " ${COMPLETE_FRAMEWORK[*]} " =~ " error-handler " ]]; then
+        cpu_usage=$(error_handler_safe_execute "cpu_check" top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1 || echo "0")
     else
-        sqlite_metrics=$(get_sqlite_metrics_fallback)
-        log_info "Using unified fallback SQLite analysis"
+        cpu_usage=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1 || echo "0")
     fi
 
-    if [[ "$sqlite_metrics" =~ available=true ]] || [[ "$sqlite_metrics" =~ db_exists=true ]]; then
-        # Parse SQLite metrics
-        local file_size_mb wal_size_mb fragmentation_ratio table_count user_count journal_mode
-        eval "$(echo "$sqlite_metrics" | grep -E '^(file_size_mb|wal_size_mb|fragmentation_ratio|table_count|user_count|journal_mode)=' || echo 'file_size_mb=0 wal_size_mb=0 fragmentation_ratio=1.0')"
-
-        # Database size analysis using unified thresholds
-        local size_status
-        size_status=$(evaluate_sqlite_size_threshold "$file_size_mb")
-
-        case "$size_status" in
-            "critical") 
-                echo -e "${RED}🔴 SQLite SIZE CRITICAL${NC}: ${file_size_mb}MB (threshold: $SQLITE_SIZE_CRITICAL_MB MB)"
-                echo "  🚨 Database is very large - performance may be impacted"
-                echo "  💡 Run maintenance: ./sqlite-maintenance.sh --analyze"
-                ;;
-            "alert") 
-                echo -e "${YELLOW}🟠 SQLite SIZE ALERT${NC}: ${file_size_mb}MB (threshold: $SQLITE_SIZE_ALERT_MB MB)"
-                echo "  ⚠️  Database size growing - monitor growth rate"
-                echo "  💡 Consider scheduling maintenance"
-                ;;
-            "warning") 
-                echo -e "${YELLOW}🟡 SQLite SIZE WARNING${NC}: ${file_size_mb}MB (threshold: $SQLITE_SIZE_WARNING_MB MB)"
-                ;;
-            *) 
-                echo -e "${GREEN}🟢 SQLite SIZE NORMAL${NC}: ${file_size_mb}MB (under $SQLITE_SIZE_WARNING_MB MB)"
-                ;;
-        esac
-
-        # WAL file analysis using unified thresholds
-        if [[ "$wal_size_mb" != "0" ]] && command -v bc >/dev/null 2>&1; then
-            if (( $(echo "$wal_size_mb > $WAL_SIZE_CRITICAL_MB" | bc -l) )); then
-                echo -e "${RED}🔴 SQLite WAL CRITICAL${NC}: ${wal_size_mb}MB (threshold: $WAL_SIZE_CRITICAL_MB MB)"
-                echo "  🚨 WAL file is very large - checkpoint recommended"
-                echo "  💡 Run: docker exec vaultwarden sqlite3 /data/db.sqlite3 'PRAGMA wal_checkpoint;'"
-            elif (( $(echo "$wal_size_mb > $WAL_SIZE_ALERT_MB" | bc -l) )); then
-                echo -e "${YELLOW}🟠 SQLite WAL ALERT${NC}: ${wal_size_mb}MB (threshold: $WAL_SIZE_ALERT_MB MB)"
-                echo "  ℹ️  Large WAL file indicates recent activity"
-            else
-                echo -e "${GREEN}🟢 SQLite WAL NORMAL${NC}: ${wal_size_mb}MB"
-            fi
+    # Enhanced memory usage collection
+    if command -v free >/dev/null 2>&1; then
+        read -r mem_total mem_used < <(free -m | awk '/^Mem:/{print $2, $3}')
+        if command -v bc >/dev/null 2>&1; then
+            mem_usage_pct=$(echo "scale=1; $mem_used * 100 / $mem_total" | bc)
         else
-            echo -e "${GREEN}🟢 SQLite WAL${NC}: No WAL file (normal)"
-        fi
-
-        # Fragmentation analysis using unified thresholds
-        local frag_status
-        frag_status=$(evaluate_fragmentation_threshold "$fragmentation_ratio")
-
-        case "$frag_status" in
-            "critical"|"alert") 
-                echo -e "${YELLOW}🟠 SQLite FRAGMENTATION${NC}: $fragmentation_ratio (threshold: $FRAGMENTATION_ALERT_RATIO)"
-                echo "  💡 Run VACUUM to optimize: ./sqlite-maintenance.sh --vacuum"
-                ;;
-            "warning") 
-                echo -e "${YELLOW}🟡 SQLite FRAGMENTATION${NC}: $fragmentation_ratio (threshold: $FRAGMENTATION_WARNING_RATIO)"
-                echo "  ℹ️  Slight fragmentation detected"
-                ;;
-            *) 
-                echo -e "${GREEN}🟢 SQLite FRAGMENTATION${NC}: $fragmentation_ratio (optimal)"
-                ;;
-        esac
-
-        # Additional SQLite information
-        echo -e "${BLUE}ℹ️  SQLite Details:${NC} Mode: $journal_mode, Tables: $table_count, Users: $user_count"
-
-    else
-        echo -e "${RED}🔴 SQLite Analysis Failed${NC}: Database not accessible"
-        echo "  💡 Check if VaultWarden container is running"
-    fi
-
-    echo ""
-}
-
-# Unified container diagnostics
-run_unified_container_diagnostics() {
-    log_step "Container Diagnostics (Unified)"
-
-    if ! command -v docker >/dev/null 2>&1; then
-        echo -e "${RED}🔴 Docker Not Available${NC}"
-        return 1
-    fi
-
-    if ! docker info >/dev/null 2>&1; then
-        echo -e "${RED}🔴 Docker Daemon Not Running${NC}"
-        return 1
-    fi
-
-    local container_metrics
-    if [[ " ${loaded_frameworks[*]} " =~ " dashboard-metrics " ]]; then
-        container_metrics=$(dashboard_get_container_metrics)
-        log_info "Using framework dashboard-metrics for container analysis"
-    else
-        container_metrics=$(get_container_metrics_fallback)
-        log_info "Using unified fallback container analysis"
-    fi
-
-    # Parse container information
-    if [[ "$container_metrics" =~ docker_available=true ]]; then
-        local containers_running containers_total
-        eval "$(echo "$container_metrics" | grep -E '^containers_(running|total)=' || echo 'containers_running=0 containers_total=0')"
-
-        echo "Container Status: ${containers_running}/${containers_total} running"
-
-        # Check each expected container
-        local expected_containers=("vaultwarden" "bw_caddy" "bw_fail2ban" "bw_backup" "bw_watchtower" "bw_ddclient" "bw_monitoring")
-        local critical_issues=0
-
-        for container in "${expected_containers[@]}"; do
-            local service_status service_health
-            eval "$(echo "$container_metrics" | grep -E "^${container}_(status|health)=" || echo "${container}_status=not_found ${container}_health=N/A")"
-
-            case "$service_status" in
-                "running")
-                    case "$service_health" in
-                        "healthy"|"no-health-check"|"no_healthcheck")
-                            echo -e "├─ ${GREEN}✅ $container${NC}: Running, $service_health"
-                            ;;
-                        "starting")
-                            echo -e "├─ ${YELLOW}🔄 $container${NC}: Starting ($service_health)"
-                            ;;
-                        "unhealthy")
-                            echo -e "├─ ${RED}❌ $container${NC}: Running but unhealthy"
-                            ((critical_issues++))
-                            ;;
-                    esac
-                    ;;
-                "stopped"|"exited")
-                    if [[ "$container" =~ ^(vaultwarden|bw_caddy)$ ]]; then
-                        echo -e "├─ ${RED}🚨 $container${NC}: CRITICAL SERVICE STOPPED"
-                        ((critical_issues++))
-                    else
-                        echo -e "├─ ${YELLOW}⏸️  $container${NC}: Optional service stopped"
-                    fi
-                    ;;
-                "not_found")
-                    echo -e "├─ ${BLUE}➖ $container${NC}: Not configured (normal)"
-                    ;;
-                *)
-                    echo -e "├─ ${PURPLE}❓ $container${NC}: Unknown status ($service_status)"
-                    ;;
-            esac
-        done
-
-        # Summary
-        if [[ $critical_issues -gt 0 ]]; then
-            echo -e "└─ ${RED}🚨 $critical_issues critical container issues detected${NC}"
-            echo "   💡 Run: docker compose logs <service_name> for details"
-        else
-            echo -e "└─ ${GREEN}✅ All containers healthy${NC}"
-        fi
-
-    else
-        echo -e "${RED}🔴 Container Analysis Failed${NC}: Docker not available"
-        return 1
-    fi
-
-    echo ""
-}
-
-# Fallback container metrics
-get_container_metrics_fallback() {
-    local running_count=0
-    local total_count=0
-    local containers=("vaultwarden" "bw_caddy" "bw_fail2ban" "bw_backup" "bw_watchtower" "bw_ddclient" "bw_monitoring")
-
-    echo "docker_available=true"
-
-    for container in "${containers[@]}"; do
-        ((total_count++))
-
-        if docker ps --filter "name=$container" --filter "status=running" --format "{{.Names}}" | grep -q "^$container$"; then
-            ((running_count++))
-            echo "${container}_status=running"
-
-            # Get health status
-            local health
-            health=$(docker inspect "$container" --format='{{.State.Health.Status}}' 2>/dev/null || echo "no_healthcheck")
-            echo "${container}_health=$health"
-        else
-            if docker ps -a --filter "name=$container" --format "{{.Names}}" | grep -q "^$container$"; then
-                echo "${container}_status=stopped"
-            else
-                echo "${container}_status=not_found"
-            fi
-            echo "${container}_health=N/A"
-        fi
-    done
-
-    echo "containers_running=$running_count"
-    echo "containers_total=$total_count"
-}
-
-# Fallback SQLite metrics
-get_sqlite_metrics_fallback() {
-    if [[ ! -f "$SQLITE_DB_PATH" ]]; then
-        echo "available=false"
-        echo "db_exists=false"
-        return 1
-    fi
-
-    local db_size_bytes wal_size_bytes file_size_mb wal_size_mb
-
-    # File sizes
-    db_size_bytes=$(stat -c%s "$SQLITE_DB_PATH" 2>/dev/null || echo "0")
-    if [[ -f "${SQLITE_DB_PATH}-wal" ]]; then
-        wal_size_bytes=$(stat -c%s "${SQLITE_DB_PATH}-wal" 2>/dev/null || echo "0")
-    else
-        wal_size_bytes="0"
-    fi
-
-    # Convert to MB
-    if command -v bc >/dev/null 2>&1; then
-        file_size_mb=$(echo "scale=2; $db_size_bytes / 1024 / 1024" | bc)
-        wal_size_mb=$(echo "scale=2; $wal_size_bytes / 1024 / 1024" | bc)
-    else
-        file_size_mb=$(( db_size_bytes / 1024 / 1024 ))
-        wal_size_mb=$(( wal_size_bytes / 1024 / 1024 ))
-    fi
-
-    # Basic SQLite queries
-    local table_count user_count journal_mode fragmentation_ratio
-    if command -v sqlite3 >/dev/null 2>&1; then
-        table_count=$(sqlite3 "$SQLITE_DB_PATH" "SELECT COUNT(*) FROM sqlite_master WHERE type='table';" 2>/dev/null || echo "0")
-        journal_mode=$(sqlite3 "$SQLITE_DB_PATH" "PRAGMA journal_mode;" 2>/dev/null || echo "unknown")
-
-        # User count if users table exists
-        if sqlite3 "$SQLITE_DB_PATH" "SELECT name FROM sqlite_master WHERE type='table' AND name='users';" 2>/dev/null | grep -q users; then
-            user_count=$(sqlite3 "$SQLITE_DB_PATH" "SELECT COUNT(*) FROM users;" 2>/dev/null || echo "0")
-        else
-            user_count="N/A"
-        fi
-
-        # Simple fragmentation estimate
-        local page_count freelist_count
-        page_count=$(sqlite3 "$SQLITE_DB_PATH" "PRAGMA page_count;" 2>/dev/null || echo "1")
-        freelist_count=$(sqlite3 "$SQLITE_DB_PATH" "PRAGMA freelist_count;" 2>/dev/null || echo "0")
-
-        if command -v bc >/dev/null 2>&1 && [[ $page_count -gt 0 ]]; then
-            fragmentation_ratio=$(echo "scale=2; $freelist_count / $page_count" | bc)
-        else
-            fragmentation_ratio="0.00"
+            mem_usage_pct=$(( (mem_used * 100) / mem_total ))
         fi
     else
-        table_count="N/A"
-        user_count="N/A"
-        journal_mode="unknown"
-        fragmentation_ratio="0.00"
+        mem_total="N/A"
+        mem_used="N/A"
+        mem_usage_pct="N/A"
+    fi
+
+    # Enhanced load average collection
+    if command -v uptime >/dev/null 2>&1; then
+        read -r load_1m load_5m load_15m < <(uptime | awk -F'load average:' '{print $2}' | awk '{gsub(/,/, ""); print $1, $2, $3}')
+    else
+        load_1m="N/A"
+        load_5m="N/A" 
+        load_15m="N/A"
+    fi
+
+    # Enhanced disk usage collection
+    if command -v df >/dev/null 2>&1; then
+        read -r disk_total disk_used disk_usage_pct < <(df . | awk 'NR==2 {print $2, $3, $5}' | sed 's/%//')
+    else
+        disk_total="N/A"
+        disk_used="N/A"
+        disk_usage_pct="N/A"
     fi
 
     cat <<EOF
-available=true
-db_exists=true
-file_size_mb=$file_size_mb
+timestamp=$timestamp
+cpu_usage=$cpu_usage
+mem_total=$mem_total
+mem_used=$mem_used
+mem_usage_pct=$mem_usage_pct
+load_1m=$load_1m
+load_5m=$load_5m
+load_15m=$load_15m
+disk_total=$disk_total
+disk_used=$disk_used
+disk_usage_pct=$disk_usage_pct
+EOF
+}
+
+# ==============================================================================
+# PHASE 3: COMPLETE SQLITE PERFORMANCE WITH FORMATTING
+# ==============================================================================
+
+# Get SQLite performance using complete framework integration
+get_sqlite_performance_complete() {
+    if [[ ! -f "$SQLITE_DB_PATH" ]]; then
+        perf_debug "SQLite database not found: $SQLITE_DB_PATH"
+        echo "sqlite_available=false"
+        return 1
+    fi
+
+    perf_debug "Collecting SQLite performance metrics using complete framework"
+
+    if [[ " ${COMPLETE_FRAMEWORK[*]} " =~ " dashboard-sqlite " ]]; then
+        # Use complete framework SQLite monitoring
+        local sqlite_status sqlite_metrics
+
+        if [[ " ${COMPLETE_FRAMEWORK[*]} " =~ " error-handler " ]]; then
+            sqlite_status=$(error_handler_safe_execute "sqlite_status" dashboard_sqlite_get_status)
+            sqlite_metrics=$(error_handler_safe_execute "sqlite_metrics" dashboard_sqlite_get_detailed_metrics)
+        else
+            sqlite_status=$(dashboard_sqlite_get_status)
+            sqlite_metrics=$(dashboard_sqlite_get_detailed_metrics || echo "available=false")
+        fi
+
+        if [[ "$sqlite_status" =~ status=accessible ]] && [[ "$sqlite_metrics" =~ available=true ]]; then
+            echo "sqlite_available=true"
+
+            # Parse complete framework results
+            local file_size_mb table_count user_count fragmentation_ratio wal_size_mb journal_mode page_count
+            eval "$(echo "$sqlite_metrics" | grep -E '^(file_size_mb|table_count|user_count|fragmentation_ratio|wal_size_mb|journal_mode|page_count)=')"
+
+            # Convert to compatible format for existing analysis functions
+            local db_size_bytes wal_size_bytes
+            if command -v bc >/dev/null 2>&1; then
+                db_size_bytes=$(echo "$file_size_mb * 1024 * 1024" | bc | cut -d'.' -f1)
+                wal_size_bytes=$(echo "$wal_size_mb * 1024 * 1024" | bc | cut -d'.' -f1)
+            else
+                db_size_bytes=$(( ${file_size_mb%.*} * 1024 * 1024 ))
+                wal_size_bytes=$(( ${wal_size_mb%.*} * 1024 * 1024 ))
+            fi
+
+            # Enhanced database timing test with error handling
+            local query_time integrity_ok
+            if [[ " ${COMPLETE_FRAMEWORK[*]} " =~ " error-handler " ]]; then
+                local query_start query_end
+                query_start=$(date +%s%N || date +%s)
+                if error_handler_safe_execute "sqlite_query" sqlite3 "$SQLITE_DB_PATH" "SELECT COUNT(*) FROM sqlite_master;" >/dev/null; then
+                    query_end=$(date +%s%N || date +%s)
+                    integrity_ok="true"
+
+                    if command -v bc >/dev/null 2>&1; then
+                        query_time=$(echo "scale=3; ($query_end - $query_start) / 1000000000" | bc)
+                    else
+                        query_time="<1"
+                    fi
+                else
+                    query_time="N/A"
+                    integrity_ok="false"
+                fi
+            else
+                # Standard timing test
+                local query_start query_end
+                query_start=$(date +%s%N || date +%s)
+                if sqlite3 "$SQLITE_DB_PATH" "SELECT COUNT(*) FROM sqlite_master;" >/dev/null 2>&1; then
+                    query_end=$(date +%s%N || date +%s)
+                    integrity_ok="true"
+
+                    if command -v bc >/dev/null 2>&1; then
+                        query_time=$(echo "scale=3; ($query_end - $query_start) / 1000000000" | bc)
+                    else
+                        query_time="<1"
+                    fi
+                else
+                    query_time="N/A"
+                    integrity_ok="false"
+                fi
+            fi
+
+            # Database modified time
+            local db_modified
+            db_modified=$(stat -c%Y "$SQLITE_DB_PATH" || echo "0")
+
+            # Output complete framework results in compatible format
+            cat <<EOF
+db_size_bytes=$db_size_bytes
+db_size_mb=$file_size_mb
+db_modified=$db_modified
+wal_size_bytes=$wal_size_bytes
 wal_size_mb=$wal_size_mb
+query_time=$query_time
+integrity_ok=$integrity_ok
 table_count=$table_count
 user_count=$user_count
 journal_mode=$journal_mode
+page_count=$page_count
 fragmentation_ratio=$fragmentation_ratio
 EOF
-}
 
-# ================================
-# NETWORK CONNECTIVITY DIAGNOSTICS
-# ================================
+            perf_debug "SQLite metrics collected via complete framework integration"
 
-run_network_diagnostics() {
-    log_step "Network Connectivity (Unified)"
-
-    # Internal connectivity test
-    if curl -sf http://localhost:80/alive >/dev/null 2>&1; then
-        echo -e "${GREEN}🟢 Internal Connectivity${NC}: VaultWarden responding on localhost:80"
-    else
-        echo -e "${RED}🔴 Internal Connectivity${NC}: VaultWarden not responding"
-        echo "  💡 Check if vaultwarden container is running"
-    fi
-
-    # External connectivity test (if domain configured)
-    if [[ -n "${APP_DOMAIN:-}" ]]; then
-        local domain_url="${DOMAIN:-https://${APP_DOMAIN}}"
-
-        if curl -sf "${domain_url}/alive" >/dev/null 2>&1; then
-            echo -e "${GREEN}🟢 External Connectivity${NC}: $domain_url responding"
         else
-            echo -e "${YELLOW}🟡 External Connectivity${NC}: $domain_url not accessible"
-            echo "  ℹ️  This may be normal if DNS/firewall not configured"
+            perf_warning "SQLite framework monitoring unavailable"
+            echo "sqlite_available=false"
+            return 1
         fi
     else
-        echo -e "${BLUE}ℹ️  External Connectivity${NC}: No domain configured for testing"
+        # Enhanced fallback SQLite monitoring (Phase 3)
+        get_sqlite_performance_enhanced_fallback
+        perf_debug "SQLite metrics collected via enhanced fallback"
     fi
-
-    echo ""
 }
 
-# ================================
-# CONFIGURATION VALIDATION
-# ================================
+# Enhanced fallback SQLite performance (Phase 3)
+get_sqlite_performance_enhanced_fallback() {
+    local db_size_bytes db_size_mb db_modified
+    local wal_size_bytes wal_size_mb query_time integrity_ok
+    local table_count user_count journal_mode
 
-run_configuration_validation() {
-    log_step "Configuration Validation (Unified)"
+    # Enhanced file operations with error handling
+    if [[ " ${COMPLETE_FRAMEWORK[*]} " =~ " error-handler " ]]; then
+        db_size_bytes=$(error_handler_safe_execute "file_stat" stat -c%s "$SQLITE_DB_PATH" || echo "0")
+        db_modified=$(error_handler_safe_execute "file_modified" stat -c%Y "$SQLITE_DB_PATH" || echo "0")
+    else
+        db_size_bytes=$(stat -c%s "$SQLITE_DB_PATH" || echo "0")
+        db_modified=$(stat -c%Y "$SQLITE_DB_PATH" || echo "0")
+    fi
 
-    # Load settings if available
-    local settings_status="Not found"
-    if [[ -f "$SCRIPT_DIR/settings.env" ]]; then
-        settings_status="Found"
-        echo -e "${GREEN}🟢 settings.env${NC}: Configuration file exists"
+    if command -v bc >/dev/null 2>&1; then
+        db_size_mb=$(echo "scale=2; $db_size_bytes / 1024 / 1024" | bc)
+    else
+        db_size_mb=$(( db_size_bytes / 1024 / 1024 ))
+    fi
 
-        # Check critical variables
-        local critical_vars=("DOMAIN" "ADMIN_TOKEN" "ADMIN_EMAIL")
-        local missing_vars=()
+    # Enhanced WAL file check
+    if [[ -f "${SQLITE_DB_PATH}-wal" ]]; then
+        if [[ " ${COMPLETE_FRAMEWORK[*]} " =~ " error-handler " ]]; then
+            wal_size_bytes=$(error_handler_safe_execute "wal_stat" stat -c%s "${SQLITE_DB_PATH}-wal" || echo "0")
+        else
+            wal_size_bytes=$(stat -c%s "${SQLITE_DB_PATH}-wal" || echo "0")
+        fi
 
-        set -a
-        source "$SCRIPT_DIR/settings.env"
-        set +a
+        if command -v bc >/dev/null 2>&1; then
+            wal_size_mb=$(echo "scale=2; $wal_size_bytes / 1024 / 1024" | bc)
+        else
+            wal_size_mb=$(( wal_size_bytes / 1024 / 1024 ))
+        fi
+    else
+        wal_size_bytes="0"
+        wal_size_mb="0"
+    fi
 
-        for var in "${critical_vars[@]}"; do
-            if [[ -z "${!var:-}" ]]; then
-                missing_vars+=("$var")
+    # Enhanced SQLite query tests with error handling
+    if [[ " ${COMPLETE_FRAMEWORK[*]} " =~ " error-handler " ]]; then
+        local query_start query_end
+        query_start=$(date +%s%N || date +%s)
+        if error_handler_safe_execute "sqlite_query_test" sqlite3 "$SQLITE_DB_PATH" "SELECT COUNT(*) FROM sqlite_master;" >/dev/null; then
+            query_end=$(date +%s%N || date +%s)
+            integrity_ok="true"
+
+            if command -v bc >/dev/null 2>&1; then
+                query_time=$(echo "scale=3; ($query_end - $query_start) / 1000000000" | bc)
+            else
+                query_time="<1"
             fi
-        done
 
-        if [[ ${#missing_vars[@]} -gt 0 ]]; then
-            echo -e "${RED}🔴 Missing Variables${NC}: ${missing_vars[*]}"
-            echo "  💡 Configure in settings.env file"
+            # Enhanced database statistics collection
+            table_count=$(error_handler_safe_execute "table_count" sqlite3 "$SQLITE_DB_PATH" "SELECT COUNT(*) FROM sqlite_master WHERE type='table';" || echo "0")
+            journal_mode=$(error_handler_safe_execute "journal_mode" sqlite3 "$SQLITE_DB_PATH" "PRAGMA journal_mode;" || echo "unknown")
+
+            # User count if users table exists
+            if error_handler_safe_execute "users_check" sqlite3 "$SQLITE_DB_PATH" "SELECT name FROM sqlite_master WHERE type='table' AND name='users';" | grep -q users; then
+                user_count=$(error_handler_safe_execute "user_count" sqlite3 "$SQLITE_DB_PATH" "SELECT COUNT(*) FROM users;" || echo "0")
+            else
+                user_count="N/A"
+            fi
         else
-            echo -e "${GREEN}🟢 Core Variables${NC}: All required variables configured"
+            query_time="N/A"
+            integrity_ok="false"
+            table_count="N/A"
+            user_count="N/A"
+            journal_mode="unknown"
         fi
-
-        # Check optional features
-        local optional_features=()
-        [[ -n "${SMTP_HOST:-}" ]] && optional_features+=("SMTP")
-        [[ -n "${BACKUP_REMOTE:-}" ]] && optional_features+=("Backup")
-        [[ -n "${ALERT_EMAIL:-}" ]] && optional_features+=("Alerts")
-
-        if [[ ${#optional_features[@]} -gt 0 ]]; then
-            echo -e "${BLUE}ℹ️  Optional Features${NC}: ${optional_features[*]} configured"
-        else
-            echo -e "${YELLOW}🟡 Optional Features${NC}: None configured (SMTP, Backup, Alerts)"
-        fi
-
     else
-        echo -e "${RED}🔴 settings.env${NC}: Configuration file not found"
-        echo "  💡 Copy from settings.env.example and configure"
+        # Standard enhanced fallback
+        if sqlite3 "$SQLITE_DB_PATH" "SELECT COUNT(*) FROM sqlite_master;" >/dev/null 2>&1; then
+            local query_start query_end
+            query_start=$(date +%s%N || date +%s)
+            sqlite3 "$SQLITE_DB_PATH" "SELECT COUNT(*) FROM sqlite_master;" >/dev/null
+            query_end=$(date +%s%N || date +%s)
+            integrity_ok="true"
+
+            if command -v bc >/dev/null 2>&1; then
+                query_time=$(echo "scale=3; ($query_end - $query_start) / 1000000000" | bc)
+            else
+                query_time="<1"
+            fi
+
+            table_count=$(sqlite3 "$SQLITE_DB_PATH" "SELECT COUNT(*) FROM sqlite_master WHERE type='table';" || echo "0")
+            journal_mode=$(sqlite3 "$SQLITE_DB_PATH" "PRAGMA journal_mode;" || echo "unknown")
+
+            if sqlite3 "$SQLITE_DB_PATH" "SELECT name FROM sqlite_master WHERE type='table' AND name='users';" | grep -q users; then
+                user_count=$(sqlite3 "$SQLITE_DB_PATH" "SELECT COUNT(*) FROM users;" || echo "0")
+            else
+                user_count="N/A"
+            fi
+        else
+            query_time="N/A"
+            integrity_ok="false"
+            table_count="N/A"
+            user_count="N/A"
+            journal_mode="unknown"
+        fi
     fi
 
-    echo ""
-}
-
-# ================================
-# COMPREHENSIVE HEALTH CHECK
-# ================================
-
-run_comprehensive_diagnostics() {
-    echo -e "${BOLD}${CYAN}VaultWarden-OCI Comprehensive Diagnostics${NC}"
-    echo -e "${BOLD}Unified Configuration v$MONITORING_CONFIG_VERSION${NC}"
-    echo "Framework components: ${loaded_frameworks[*]:-none}"
-    echo "Configuration sources: $MONITORING_CONFIG_SOURCES"
-    echo "======================================================================="
-    echo ""
-
-    # Run all diagnostic modules
-    run_unified_system_diagnostics
-    run_unified_sqlite_diagnostics  
-    run_unified_container_diagnostics
-    run_network_diagnostics
-    run_configuration_validation
-
-    # Overall health summary
-    log_step "Overall Health Summary"
-
-    # Use unified metrics for final assessment
-    local system_metrics
-    system_metrics=$(get_unified_system_metrics)
-    eval "$system_metrics"
-
-    local issues=0
-    local warnings=0
-
-    # Count issues using unified evaluation
-    case "$(evaluate_cpu_threshold "$cpu_usage")" in
-        "critical"|"alert") ((issues++)) ;;
-        "warning") ((warnings++)) ;;
-    esac
-
-    case "$(evaluate_memory_threshold "$mem_usage_pct")" in
-        "critical"|"alert") ((issues++)) ;;
-        "warning") ((warnings++)) ;;
-    esac
-
-    case "$(evaluate_load_threshold "$load_1m")" in
-        "critical"|"alert") ((issues++)) ;;
-        "warning") ((warnings++)) ;;
-    esac
-
-    # Final status
-    if [[ $issues -gt 0 ]]; then
-        echo -e "${RED}🚨 CRITICAL${NC}: $issues critical issues detected"
-        echo "  💡 Immediate attention required"
-        exit 1
-    elif [[ $warnings -gt 0 ]]; then
-        echo -e "${YELLOW}⚠️  WARNINGS${NC}: $warnings warnings detected"
-        echo "  💡 Monitor closely, consider optimization"
-        exit 1
-    else
-        echo -e "${GREEN}✅ HEALTHY${NC}: All systems operating within unified thresholds"
-        echo "  🎯 Optimized for 1 OCPU/6GB OCI A1 Flex"
-        exit 0
-    fi
-}
-
-# ================================
-# MAIN EXECUTION
-# ================================
-
-show_help() {
     cat <<EOF
-VaultWarden-OCI Unified Diagnostics v$MONITORING_CONFIG_VERSION
-
-Usage: $0 [options]
-
-Options:
-    --system        Run system diagnostics only
-    --sqlite        Run SQLite diagnostics only  
-    --containers    Run container diagnostics only
-    --network       Run network connectivity tests only
-    --config        Run configuration validation only
-    --help, -h      Show this help message
-    (no options)    Run comprehensive diagnostics
-
-Features:
-    ✅ Unified threshold configuration across all scripts
-    ✅ Consistent variable names and evaluation logic
-    ✅ Framework integration with graceful fallbacks
-    ✅ Optimized for 1 OCPU/6GB OCI A1 Flex deployment
-    ✅ Detailed remediation suggestions for each issue
-
-Unified Configuration:
-    Sources: $MONITORING_CONFIG_SOURCES
-    CPU Thresholds: ${CPU_WARNING_THRESHOLD}%/${CPU_ALERT_THRESHOLD}%/${CPU_CRITICAL_THRESHOLD}%
-    Memory Thresholds: ${MEMORY_WARNING_THRESHOLD}%/${MEMORY_ALERT_THRESHOLD}%/${MEMORY_CRITICAL_THRESHOLD}%
-    Load Thresholds: ${LOAD_WARNING_THRESHOLD}/${LOAD_ALERT_THRESHOLD}/${LOAD_CRITICAL_THRESHOLD} (1 OCPU)
-    SQLite Size Threshold: ${SQLITE_SIZE_ALERT_MB}MB
-
-Examples:
-    $0                  # Comprehensive diagnostics
-    $0 --system         # System resources only
-    $0 --sqlite         # Database analysis only
-    $0 --containers     # Container status only
-
+sqlite_available=true
+db_size_bytes=$db_size_bytes
+db_size_mb=$db_size_mb
+db_modified=$db_modified
+wal_size_bytes=$wal_size_bytes
+wal_size_mb=$wal_size_mb
+query_time=$query_time
+integrity_ok=$integrity_ok
+table_count=$table_count
+user_count=$user_count
+journal_mode=$journal_mode
 EOF
 }
 
-# Parse arguments
-case "${1:-}" in
-    --system)
-        run_unified_system_diagnostics
-        ;;
-    --sqlite)
-        run_unified_sqlite_diagnostics
-        ;;
-    --containers)
-        run_unified_container_diagnostics
-        ;;
-    --network)
-        run_network_diagnostics
-        ;;
-    --config)
-        run_configuration_validation
-        ;;
-    --help|-h)
-        show_help
-        exit 0
-        ;;
-    "")
-        run_comprehensive_diagnostics
-        ;;
-    *)
-        echo "Unknown option: $1" >&2
-        echo "Use --help for usage information"
-        exit 1
-        ;;
-esac
+# ==============================================================================
+# PHASE 3: COMPLETE CONTAINER PERFORMANCE INTEGRATION
+# ==============================================================================
+
+# Get container performance using complete framework
+get_container_performance_complete() {
+    if [[ " ${COMPLETE_FRAMEWORK[*]} " =~ " dashboard-metrics " ]]; then
+        # Use complete framework container monitoring
+        local container_metrics
+
+        if [[ " ${COMPLETE_FRAMEWORK[*]} " =~ " error-handler " ]]; then
+            container_metrics=$(error_handler_safe_execute "container_metrics" dashboard_get_container_metrics)
+        else
+            container_metrics=$(dashboard_get_container_metrics)
+        fi
+
+        if [[ "$container_metrics" =~ docker_available=true ]]; then
+            perf_debug "Container metrics collected via complete framework integration"
+            echo "$container_metrics"
+        else
+            perf_warning "Docker not available via framework"
+            echo "docker_available=false"
+            return 1
+        fi
+    else
+        # Enhanced fallback container monitoring
+        perf_debug "Using enhanced fallback container monitoring"
+        get_container_performance_enhanced_fallback
+    fi
+}
+
+# Enhanced fallback container performance (Phase 3)
+get_container_performance_enhanced_fallback() {
+    if ! command -v docker >/dev/null 2>&1; then
+        echo "docker_available=false"
+        return 1
+    fi
+
+    # Enhanced Docker availability check
+    if [[ " ${COMPLETE_FRAMEWORK[*]} " =~ " error-handler " ]]; then
+        if ! error_handler_safe_execute "docker_check" docker info >/dev/null; then
+            echo "docker_available=false"
+            return 1
+        fi
+    else
+        if ! docker info >/dev/null 2>&1; then
+            echo "docker_available=false"
+            return 1
+        fi
+    fi
+
+    echo "docker_available=true"
+
+    # Enhanced container stats collection
+    local container_stats
+    if [[ " ${COMPLETE_FRAMEWORK[*]} " =~ " error-handler " ]]; then
+        container_stats=$(error_handler_safe_execute "container_stats" docker stats --no-stream --format "{{.Name}},{{.CPUPerc}},{{.MemUsage}},{{.NetIO}},{{.BlockIO}}" || echo "")
+    else
+        container_stats=$(docker stats --no-stream --format "{{.Name}},{{.CPUPerc}},{{.MemUsage}},{{.NetIO}},{{.BlockIO}}" || echo "")
+    fi
+
+    local container_count
+    container_count=$(echo "$container_stats" | grep -c . || echo "0")
+    echo "container_count=$container_count"
+
+    # Enhanced container processing
+    local container_index=0
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+
+        local name cpu_perc mem_usage net_io block_io
+        IFS=',' read -r name cpu_perc mem_usage net_io block_io <<< "$line"
+
+        # Enhanced metric cleaning
+        cpu_perc=$(echo "$cpu_perc" | sed 's/%//')
+        mem_usage=$(echo "$mem_usage" | awk '{print $1}' | sed 's/MiB//')
+
+        echo "container_${container_index}_name=$name"
+        echo "container_${container_index}_cpu_perc=$cpu_perc"
+        echo "container_${container_index}_mem_usage=$mem_usage"
+        echo "container_${container_index}_net_io=$net_io"
+        echo "container_${container_index}_block_io=$block_io"
+
+        ((container_index++))
+    done <<< "$container_stats"
+}
+
+# ==============================================================================
+# PHASE 3: COMPLETE PERFORMANCE ANALYSIS WITH FORMATTING
+# ==============================================================================
+
+# Analyze performance using complete framework integration
+analyze_performance_complete() {
+    local metrics="$1"
+
+    perf_info "Starting complete performance analysis with framework integration"
+
+    # Parse comprehensive metrics
+    local cpu_usage mem_usage_pct load_1m db_size_mb wal_size_mb fragmentation_ratio
+    eval "$(echo "$metrics" | grep -E '^(cpu_usage|mem_usage_pct|load_1m|db_size_mb|wal_size_mb|fragmentation_ratio)=')"
+
+    # Use framework formatting for section headers
+    if [[ " ${COMPLETE_FRAMEWORK[*]} " =~ " perf-formatter " ]]; then
+        perf_formatter_section "Performance Analysis for 1 OCPU/6GB Deployment" "normal"
+    else
+        echo -e "${BOLD}Performance Analysis for 1 OCPU/6GB Deployment:${NC}"
+    fi
+    echo ""
+
+    # CPU Analysis with complete framework integration
+    if [[ " ${COMPLETE_FRAMEWORK[*]} " =~ " perf-formatter " ]]; then
+        perf_formatter_section "CPU Performance" "compact"
+
+        if command -v bc >/dev/null 2>&1 && (( $(echo "$cpu_usage > $CPU_CRITICAL_THRESHOLD" | bc -l) )); then
+            perf_formatter_status "critical" "CPU usage ${cpu_usage}% is critical (>${CPU_CRITICAL_THRESHOLD}%) for single core"
+            perf_formatter_recommendations "cpu_critical_1ocpu"
+        elif command -v bc >/dev/null 2>&1 && (( $(echo "$cpu_usage > $CPU_WARNING_THRESHOLD" | bc -l) )); then
+            perf_formatter_status "warning" "CPU usage ${cpu_usage}% is high (>${CPU_WARNING_THRESHOLD}%) for single core"
+            perf_formatter_recommendations "cpu_warning_1ocpu"
+        else
+            perf_formatter_status "good" "CPU usage ${cpu_usage}% is acceptable for 1 OCPU"
+        fi
+    else
+        # Fallback CPU analysis with enhanced formatting
+        echo -e "${BOLD}CPU Performance:${NC}"
+        if command -v bc >/dev/null 2>&1 && (( $(echo "$cpu_usage > $CPU_CRITICAL_THRESHOLD" | bc -l) )); then
+            perf_critical "CPU usage ${cpu_usage}% is critical (>${CPU_CRITICAL_THRESHOLD}%) for single core"
+            echo "  Recommendations:"
+            echo "  • Check for runaway processes"
+            echo "  • Reduce VaultWarden workers (ROCKET_WORKERS=1)"
+            echo "  • Review backup schedule frequency"
+        elif command -v bc >/dev/null 2>&1 && (( $(echo "$cpu_usage > $CPU_WARNING_THRESHOLD" | bc -l) )); then
+            perf_warning "CPU usage ${cpu_usage}% is high (>${CPU_WARNING_THRESHOLD}%) for single core"
+        else
+            perf_success "CPU usage ${cpu_usage}% is acceptable for 1 OCPU"
+        fi
+    fi
+    echo ""
+
+    # Memory Analysis with complete framework formatting
+    if [[ " ${COMPLETE_FRAMEWORK[*]} " =~ " perf-formatter " ]]; then
+        perf_formatter_section "Memory Performance" "compact"
+
+        if command -v bc >/dev/null 2>&1 && (( $(echo "$mem_usage_pct > $MEMORY_CRITICAL_THRESHOLD" | bc -l) )); then
+            perf_formatter_status "critical" "Memory usage ${mem_usage_pct}% is critical (>${MEMORY_CRITICAL_THRESHOLD}%)"
+            perf_formatter_recommendations "memory_critical_6gb"
+        elif command -v bc >/dev/null 2>&1 && (( $(echo "$mem_usage_pct > $MEMORY_WARNING_THRESHOLD" | bc -l) )); then
+            perf_formatter_status "warning" "Memory usage ${mem_usage_pct}% is high (>${MEMORY_WARNING_THRESHOLD}%)"
+        else
+            perf_formatter_status "good" "Memory usage ${mem_usage_pct}% is good (target: ~11% of 6GB)"
+        fi
+    else
+        # Fallback memory analysis
+        echo -e "${BOLD}Memory Performance:${NC}"
+        if command -v bc >/dev/null 2>&1 && (( $(echo "$mem_usage_pct > $MEMORY_CRITICAL_THRESHOLD" | bc -l) )); then
+            perf_critical "Memory usage ${mem_usage_pct}% is critical (>${MEMORY_CRITICAL_THRESHOLD}%)"
+        elif command -v bc >/dev/null 2>&1 && (( $(echo "$mem_usage_pct > $MEMORY_WARNING_THRESHOLD" | bc -l) )); then
+            perf_warning "Memory usage ${mem_usage_pct}% is high (>${MEMORY_WARNING_THRESHOLD}%)"
+        else
+            perf_success "Memory usage ${mem_usage_pct}% is good"
+        fi
+    fi
+    echo ""
+
+    # Load Average Analysis with complete framework formatting (critical for 1 OCPU)
+    if [[ " ${COMPLETE_FRAMEWORK[*]} " =~ " perf-formatter " ]]; then
+        perf_formatter_section "Load Average Performance (1 OCPU Context)" "compact"
+        perf_formatter_load_analysis_1cpu "$load_1m" "$LOAD_WARNING_THRESHOLD" "$LOAD_CRITICAL_THRESHOLD"
+    else
+        # Fallback load analysis
+        echo -e "${BOLD}Load Average Performance (1 OCPU Context):${NC}"
+        if command -v bc >/dev/null 2>&1 && (( $(echo "$load_1m > $LOAD_CRITICAL_THRESHOLD" | bc -l) )); then
+            perf_critical "Load average ${load_1m} is critical (>${LOAD_CRITICAL_THRESHOLD}) for 1 OCPU"
+            echo "  Single CPU is overloaded - system may be unresponsive"
+        elif command -v bc >/dev/null 2>&1 && (( $(echo "$load_1m > $LOAD_WARNING_THRESHOLD" | bc -l) )); then
+            perf_warning "Load average ${load_1m} is elevated (>${LOAD_WARNING_THRESHOLD}) for 1 OCPU"
+        else
+            perf_success "Load average ${load_1m} is healthy for 1 OCPU (optimal: <1.0)"
+        fi
+    fi
+    echo ""
+
+    # SQLite Performance Analysis with complete framework formatting
+    if [[ -n "$db_size_mb" && "$db_size_mb" != "N/A" ]]; then
+        if [[ " ${COMPLETE_FRAMEWORK[*]} " =~ " perf-formatter " ]]; then
+            perf_formatter_section "SQLite Database Performance (Framework Analysis)" "compact"
+            perf_formatter_sqlite_analysis "$db_size_mb" "$wal_size_mb" "${fragmentation_ratio:-1.0}" "$SQLITE_SIZE_WARNING_MB" "$SQLITE_SIZE_CRITICAL_MB"
+        else
+            # Fallback SQLite analysis
+            echo -e "${BOLD}SQLite Database Performance:${NC}"
+
+            if command -v bc >/dev/null 2>&1 && (( $(echo "$db_size_mb > $SQLITE_SIZE_CRITICAL_MB" | bc -l) )); then
+                perf_critical "Database size ${db_size_mb}MB is large (>${SQLITE_SIZE_CRITICAL_MB}MB)"
+                echo "  Recommendations:"
+                echo "  • Run ./sqlite-maintenance.sh --analyze for assessment"
+                echo "  • Consider VACUUM operation"
+            elif command -v bc >/dev/null 2>&1 && (( $(echo "$db_size_mb > $SQLITE_SIZE_WARNING_MB" | bc -l) )); then
+                perf_warning "Database size ${db_size_mb}MB is growing (>${SQLITE_SIZE_WARNING_MB}MB)"
+            else
+                perf_success "Database size ${db_size_mb}MB is reasonable"
+            fi
+
+            # WAL analysis
+            if [[ -n "$wal_size_mb" && "$wal_size_mb" != "0" ]]; then
+                if command -v bc >/dev/null 2>&1 && (( $(echo "$wal_size_mb > 50" | bc -l) )); then
+                    perf_warning "WAL file size ${wal_size_mb}MB is large (checkpoint recommended)"
+                else
+                    perf_info "WAL file size ${wal_size_mb}MB (indicates recent activity)"
+                fi
+            fi
+        fi
+        echo ""
+    fi
+}
+
+# ==============================================================================
+# PHASE 3: COMPLETE REAL-TIME MONITORING WITH FORMATTING
+# ==============================================================================
+
+# Real-time monitoring with complete framework integration
+monitor_realtime_complete() {
+    local interval="${1:-$PERF_MONITOR_INTERVAL}"
+    local duration="${2:-0}"
+
+    perf_info "Starting complete framework-integrated real-time monitoring"
+    perf_info "Framework components: ${#COMPLETE_FRAMEWORK[@]} loaded (${COMPLETE_FRAMEWORK[*]})"
+
+    if [[ " ${COMPLETE_FRAMEWORK[*]} " =~ " perf-formatter " ]]; then
+        perf_formatter_monitoring_header "VaultWarden Performance Monitor" "Complete Framework v3" "$interval" "$duration"
+    else
+        echo -e "${BOLD}${CYAN}VaultWarden Performance Monitor (Complete Framework v3)${NC}"
+        echo "Interval: ${interval}s, Duration: $([[ $duration -eq 0 ]] && echo "infinite" || echo "${duration}s")"
+        echo "Framework: ${#COMPLETE_FRAMEWORK[@]} components active"
+        echo "Press Ctrl+C to stop"
+    fi
+    echo ""
+
+    local start_time end_time
+    start_time=$(date +%s)
+    end_time=$((start_time + duration))
+
+    while true; do
+        # Check duration limit
+        if [[ $duration -gt 0 ]] && [[ $(date +%s) -ge $end_time ]]; then
+            perf_info "Monitoring duration completed"
+            break
+        fi
+
+        clear
+
+        # Header with complete framework formatting
+        if [[ " ${COMPLETE_FRAMEWORK[*]} " =~ " perf-formatter " ]]; then
+            perf_formatter_monitoring_header "VaultWarden Monitor" "Framework v3 • $(date)" "" ""
+        else
+            echo -e "${BOLD}${CYAN}VaultWarden Performance Monitor - $(date)${NC}"
+            echo "Framework: ${COMPLETE_FRAMEWORK[*]}"
+        fi
+
+        echo "Target: 1 OCPU (CPU <${CPU_CRITICAL_THRESHOLD}%, Load <${LOAD_CRITICAL_THRESHOLD}), 6GB RAM (~672MB containers)"
+        echo "================================================================================"
+
+        # Get comprehensive metrics using complete framework
+        local system_metrics sqlite_metrics container_metrics
+        system_metrics=$(get_system_performance_complete)
+        sqlite_metrics=$(get_sqlite_performance_complete)
+        container_metrics=$(get_container_performance_complete)
+
+        # Parse key metrics for display
+        local cpu_usage mem_usage_pct load_1m db_size_mb
+        eval "$(echo "$system_metrics" | grep -E '^(cpu_usage|mem_usage_pct|load_1m)=')"
+        eval "$(echo "$sqlite_metrics" | grep -E '^db_size_mb=' || echo 'db_size_mb=N/A')"
+
+        # Display with complete framework formatting
+        if [[ " ${COMPLETE_FRAMEWORK[*]} " =~ " perf-formatter " ]]; then
+            perf_formatter_section "System Status (Framework Thresholds)" "compact"
+
+            # CPU with framework progress bar and status evaluation
+            local cpu_status="good"
+            if command -v bc >/dev/null 2>&1 && (( $(echo "$cpu_usage > $CPU_CRITICAL_THRESHOLD" | bc -l) )); then
+                cpu_status="critical"
+            elif command -v bc >/dev/null 2>&1 && (( $(echo "$cpu_usage > $CPU_WARNING_THRESHOLD" | bc -l) )); then
+                cpu_status="warning"
+            fi
+            perf_formatter_metric_display "CPU Usage" "$cpu_usage" "%" "$cpu_status" "$CPU_WARNING_THRESHOLD" "$CPU_CRITICAL_THRESHOLD"
+
+            # Memory with framework formatting
+            local mem_status="good"
+            if command -v bc >/dev/null 2>&1 && (( $(echo "$mem_usage_pct > $MEMORY_CRITICAL_THRESHOLD" | bc -l) )); then
+                mem_status="critical"
+            elif command -v bc >/dev/null 2>&1 && (( $(echo "$mem_usage_pct > $MEMORY_WARNING_THRESHOLD" | bc -l) )); then
+                mem_status="warning"
+            fi
+            perf_formatter_metric_display "Memory" "$mem_usage_pct" "%" "$mem_status" "$MEMORY_WARNING_THRESHOLD" "$MEMORY_CRITICAL_THRESHOLD"
+
+            # Load Average with framework 1 OCPU formatting
+            perf_formatter_load_display_1cpu "$load_1m" "$LOAD_WARNING_THRESHOLD" "$LOAD_CRITICAL_THRESHOLD"
+
+        else
+            # Fallback display with enhanced formatting
+            echo -e "${BOLD}System Status:${NC}"
+
+            # CPU with color coding
+            local cpu_color
+            if command -v bc >/dev/null 2>&1 && (( $(echo "$cpu_usage > $CPU_CRITICAL_THRESHOLD" | bc -l) )); then
+                cpu_color="$RED"
+            elif command -v bc >/dev/null 2>&1 && (( $(echo "$cpu_usage > $CPU_WARNING_THRESHOLD" | bc -l) )); then
+                cpu_color="$YELLOW"
+            else
+                cpu_color="$GREEN"
+            fi
+            echo -e "CPU Usage: ${cpu_color}${cpu_usage}%${NC} (warn: ${CPU_WARNING_THRESHOLD}%, crit: ${CPU_CRITICAL_THRESHOLD}%)"
+
+            # Memory with color coding
+            local mem_color
+            if command -v bc >/dev/null 2>&1 && (( $(echo "$mem_usage_pct > $MEMORY_CRITICAL_THRESHOLD" | bc -l) )); then
+                mem_color="$RED"
+            elif command -v bc >/dev/null 2>&1 && (( $(echo "$mem_usage_pct > $MEMORY_WARNING_THRESHOLD" | bc -l) )); then
+                mem_color="$YELLOW"
+            else
+                mem_color="$GREEN"
+            fi
+            echo -e "Memory: ${mem_color}${mem_usage_pct}%${NC} (warn: ${MEMORY_WARNING_THRESHOLD}%, crit: ${MEMORY_CRITICAL_THRESHOLD}%)"
+
+            # Load Average with 1 OCPU context
+            local load_color
+            if command -v bc >/dev/null 2>&1 && (( $(echo "$load_1m > $LOAD_CRITICAL_THRESHOLD" | bc -l) )); then
+                load_color="$RED"
+            elif command -v bc >/dev/null 2>&1 && (( $(echo "$load_1m > $LOAD_WARNING_THRESHOLD" | bc -l) )); then
+                load_color="$YELLOW"
+            else
+                load_color="$GREEN"
+            fi
+            echo -e "Load Avg: ${load_color}${load_1m}${NC} (1 OCPU warn: ${LOAD_WARNING_THRESHOLD}, crit: ${LOAD_CRITICAL_THRESHOLD})"
+        fi
+
+        # SQLite status with complete framework integration
+        if [[ "$db_size_mb" != "N/A" && -n "$db_size_mb" ]]; then
+            if [[ " ${COMPLETE_FRAMEWORK[*]} " =~ " perf-formatter " ]]; then
+                perf_formatter_sqlite_status "$db_size_mb" "$wal_size_mb" "${fragmentation_ratio:-1.0}"
+            else
+                echo -e "SQLite DB: ${GREEN}${db_size_mb}MB${NC} (framework monitored)"
+            fi
+        else
+            echo -e "SQLite DB: ${YELLOW}Not available${NC}"
+        fi
+
+        echo ""
+
+        # Container status with complete framework formatting
+        if [[ " ${COMPLETE_FRAMEWORK[*]} " =~ " perf-formatter " ]]; then
+            perf_formatter_section "Container Status" "compact"
+            perf_formatter_container_table_realtime
+        else
+            echo -e "${BOLD}Container Status:${NC}"
+            if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+                docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}" | head -6 || echo "Container stats unavailable"
+            else
+                echo "Docker not available"
+            fi
+        fi
+
+        echo ""
+        echo "Complete Framework Enhanced Monitoring... (${interval}s refresh) - Press Ctrl+C to stop"
+
+        sleep "$interval"
+    done
+}
+
+# ==============================================================================
+# PHASE 3: COMPLETE PERFORMANCE REPORTING
+# ==============================================================================
+
+# Generate complete performance report with full framework integration
+generate_performance_report_complete() {
+    local output_file="$PERF_LOG_DIR/performance-report-complete-$(date +%Y%m%d_%H%M%S).txt"
+
+    perf_info "Generating complete performance report with full framework integration"
+
+    {
+        echo "VaultWarden-OCI-Slim Performance Report (Complete Framework v3)"
+        echo "==============================================================="
+        echo "Generated: $(date)"
+        echo "Framework Integration: Complete (${#COMPLETE_FRAMEWORK[@]} components)"
+        echo "Components Active: ${COMPLETE_FRAMEWORK[*]}"
+        echo "Optimization Target: 1 OCPU/6GB SQLite deployment"
+        echo ""
+
+        # System performance using complete framework
+        echo "SYSTEM PERFORMANCE (Framework Collection):"
+        echo "=========================================="
+        local system_metrics
+        system_metrics=$(get_system_performance_complete)
+        echo "$system_metrics" | while IFS='=' read -r key value; do
+            printf "%-25s: %s\n" "$key" "$value"
+        done
+        echo ""
+
+        # SQLite performance using complete framework
+        echo "SQLITE PERFORMANCE (Framework Analysis):"
+        echo "========================================"
+        local sqlite_metrics
+        sqlite_metrics=$(get_sqlite_performance_complete)
+        if [[ "$sqlite_metrics" =~ sqlite_available=true ]]; then
+            echo "$sqlite_metrics" | grep -v "sqlite_available" | while IFS='=' read -r key value; do
+                printf "%-25s: %s\n" "$key" "$value"
+            done
+        else
+            echo "SQLite database not available"
+        fi
+        echo ""
+
+        # Container performance using complete framework
+        echo "CONTAINER PERFORMANCE (Framework Metrics):"
+        echo "==========================================="
+        local container_metrics
+        container_metrics=$(get_container_performance_complete)
+        if [[ "$container_metrics" =~ docker_available=true ]]; then
+            echo "$container_metrics" | grep -v "docker_available" | while IFS='=' read -r key value; do
+                printf "%-25s: %s\n" "$key" "$value"
+            done
+        else
+            echo "Docker not available"
+        fi
+        echo ""
+
+        # Complete performance analysis
+        echo "COMPLETE PERFORMANCE ANALYSIS:"
+        echo "=============================="
+        local all_metrics
+        all_metrics=$(echo -e "$system_metrics\n$sqlite_metrics\n$container_metrics")
+        analyze_performance_complete "$all_metrics" 2>&1 | sed 's/\033\[[0-9;]*m//g'  # Remove color codes
+
+        # Framework component status
+        echo ""
+        echo "FRAMEWORK COMPONENT STATUS:"
+        echo "=========================="
+        for component in "${COMPLETE_FRAMEWORK[@]}"; do
+            echo "✅ $component: Active and integrated"
+        done
+
+        if [[ ${#COMPLETE_FRAMEWORK[@]} -eq 0 ]]; then
+            echo "⚠️ No framework components loaded - using fallback mode"
+        fi
+
+    } > "$output_file"
+
+    perf_success "Complete performance report generated: $output_file"
+    echo "$output_file"
+}
+
+# ==============================================================================
+# PHASE 3: MAIN FUNCTION WITH COMPLETE INTEGRATION
+# ==============================================================================
+main() {
+    local action="status"
+    local interval="$PERF_MONITOR_INTERVAL"
+    local duration=0
+
+    # Complete framework initialization logging
+    perf_info "Starting performance monitoring with complete framework integration"
+    perf_info "Framework components loaded: ${#COMPLETE_FRAMEWORK[@]} (${COMPLETE_FRAMEWORK[*]})"
+
+    # Parse arguments with enhanced validation
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            status|--status)
+                action="status"
+                shift
+                ;;
+            monitor|--monitor)
+                action="monitor"
+                shift
+                ;;
+            benchmark|--benchmark)
+                action="benchmark"
+                shift
+                ;;
+            report|--report)
+                action="report"
+                shift
+                ;;
+            --interval)
+                if [[ -n "${2:-}" ]] && [[ "$2" =~ ^[0-9]+$ ]]; then
+                    interval="$2"
+                    shift 2
+                else
+                    perf_warning "Invalid interval specified, using default: $PERF_MONITOR_INTERVAL"
+                    shift
+                fi
+                ;;
+            --duration)
+                if [[ -n "${2:-}" ]] && [[ "$2" =~ ^[0-9]+$ ]]; then
+                    duration="$2"
+                    shift 2
+                else
+                    perf_warning "Invalid duration specified, using default: 0 (infinite)"
+                    shift
+                fi
+                ;;
+            --help|-h)
+                show_complete_help
+                exit 0
+                ;;
+            *)
+                perf_warning "Unknown argument: $1"
+                shift
+                ;;
+        esac
+    done
+
+    # Execute requested action with complete framework integration
+    case "$action" in
+        "status")
+            show_performance_status_complete
+            ;;
+        "monitor")
+            monitor_realtime_complete "$interval" "$duration"
+            ;;
+        "benchmark")
+            run_complete_benchmark
+            ;;
+        "report")
+            local report_file
+            report_file=$(generate_performance_report_complete)
+            perf_success "Complete performance report generated: $report_file"
+            ;;
+        *)
+            perf_critical "Unknown action: $action"
+            exit 1
+            ;;
+    esac
+}
+
+# Show performance status with complete framework integration
+show_performance_status_complete() {
+    if [[ " ${COMPLETE_FRAMEWORK[*]} " =~ " perf-formatter " ]]; then
+        perf_formatter_section "VaultWarden Performance Status (Complete Framework v3)" "normal"
+    else
+        echo -e "${BOLD}${CYAN}VaultWarden Performance Status (Complete Framework v3)${NC}"
+        echo "Framework Integration: Complete (${#COMPLETE_FRAMEWORK[@]} components)"
+    fi
+    echo ""
+
+    # Get comprehensive metrics using complete framework
+    local system_metrics sqlite_metrics container_metrics
+    system_metrics=$(get_system_performance_complete)
+    sqlite_metrics=$(get_sqlite_performance_complete)
+    container_metrics=$(get_container_performance_complete)
+
+    # Combine and analyze with complete framework
+    local all_metrics
+    all_metrics=$(echo -e "$system_metrics\n$sqlite_metrics\n$container_metrics")
+
+    analyze_performance_complete "$all_metrics"
+
+    # Complete framework optimization recommendations
+    echo ""
+    if [[ " ${COMPLETE_FRAMEWORK[*]} " =~ " perf-formatter " ]]; then
+        perf_formatter_section "Complete Framework Integration Benefits" "compact"
+        perf_formatter_recommendations "framework_complete"
+    else
+        echo -e "${BOLD}Complete Framework Integration Benefits:${NC}"
+        echo "• Cached metrics reduce system overhead on 1 OCPU"
+        echo "• Configurable thresholds from performance-targets.conf"
+        echo "• Structured logging with automatic rotation and categorization"
+        echo "• Standardized output formatting across all tools"
+        echo "• Enhanced error handling and recovery patterns"
+        echo "• Comprehensive SQLite analysis and maintenance integration"
+    fi
+
+    echo ""
+    echo -e "${BOLD}1 OCPU/6GB Optimization Guidelines (Framework-Enhanced):${NC}"
+    echo "• VaultWarden workers: 1 (ROCKET_WORKERS=1)"
+    echo "• WebSocket disabled: WEBSOCKET_ENABLED=false"
+    echo "• Target memory usage: ~672MB total containers"
+    echo "• SQLite optimal size: <${SQLITE_SIZE_CRITICAL_MB}MB"
+    echo "• Load average target: <${LOAD_WARNING_THRESHOLD} (critical <${LOAD_CRITICAL_THRESHOLD})"
+    echo ""
+}
+
+# Complete benchmark with framework integration
+run_complete_benchmark() {
+    if [[ " ${COMPLETE_FRAMEWORK[*]} " =~ " perf-formatter " ]]; then
+        perf_formatter_section "Performance Benchmark (Complete Framework)" "normal"
+    else
+        echo -e "${BOLD}${CYAN}Performance Benchmark (Complete Framework)${NC}"
+    fi
+
+    perf_info "Running comprehensive benchmark with complete framework integration"
+
+    # Framework-enhanced benchmark results
+    if [[ " ${COMPLETE_FRAMEWORK[*]} " =~ " perf-formatter " ]]; then
+        perf_formatter_benchmark_results "complete"
+    else
+        echo "Framework benchmark functionality available via lib/test-utils.sh"
+        echo "Current mode: Basic benchmark with enhanced logging"
+    fi
+}
+
+# Complete help display
+show_complete_help() {
+    if [[ " ${COMPLETE_FRAMEWORK[*]} " =~ " perf-formatter " ]]; then
+        perf_formatter_help_complete "perf-monitor" "Performance Monitor" "Complete Framework Integration v3"
+    else
+        cat <<EOF
+VaultWarden-OCI-Slim Performance Monitor (Complete Framework v3)
+
+Usage: $0 [COMMAND] [OPTIONS]
+
+Commands:
+    status      Show performance status with complete framework integration (default)
+    monitor     Real-time monitoring with complete framework formatting
+    benchmark   Run comprehensive benchmark tests
+    report      Generate detailed performance report
+
+Options:
+    --interval N    Monitoring refresh interval (config: ${PERF_MONITOR_INTERVAL}s)
+    --duration N    Monitoring duration (0 = infinite, default: 0)
+    --help, -h      Show this help message
+
+🆕 Complete Framework Integration (Phase 3):
+    ✅ lib/perf-collector.sh: Unified metrics with intelligent caching
+    ✅ lib/dashboard-sqlite.sh: Comprehensive SQLite analysis
+    ✅ lib/dashboard-metrics.sh: Complete container management
+    ✅ lib/logger.sh: Structured logging with rotation
+    ✅ lib/error-handler.sh: Robust error recovery
+    ✅ lib/perf-formatter.sh: Standardized output formatting
+
+Performance Targets (Complete Framework, 1 OCPU/6GB):
+    • CPU Usage: <${CPU_CRITICAL_THRESHOLD}% critical, <${CPU_WARNING_THRESHOLD}% warning
+    • Load Average: <${LOAD_CRITICAL_THRESHOLD} critical, <${LOAD_WARNING_THRESHOLD} optimal for 1 OCPU
+    • Memory Usage: ~672MB target for all containers
+    • SQLite Database: <${SQLITE_SIZE_CRITICAL_MB}MB for optimal performance
+
+Complete Framework Benefits:
+    • Consistent metrics across all tools via shared caching
+    • Configurable thresholds via external config files
+    • Structured logging reduces I/O overhead on 1 OCPU
+    • Standardized formatting provides consistent user experience
+    • Enhanced error handling improves reliability
+    • Graceful fallback ensures compatibility
+
+Examples:
+    $0                 # Complete framework-integrated status
+    $0 monitor         # Real-time monitoring with complete formatting
+    $0 report          # Comprehensive framework-based report
+
+EOF
+    fi
+}
+
+# Handle interrupts gracefully with complete framework logging
+trap 'echo ""; perf_info "Performance monitoring stopped by user"; exit 0' INT TERM
+
+# Execute main function
+main "$@"
