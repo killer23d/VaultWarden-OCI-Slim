@@ -231,21 +231,21 @@ services:
     healthcheck:
       test: |
         CMD-SHELL '
-        # Check if rclone config exists and has content
+        # CRITICAL: Fail if rclone config missing or empty
         if [ ! -f /home/backup/.config/rclone/rclone.conf ] || [ ! -s /home/backup/.config/rclone/rclone.conf ]; then
-          echo "rclone.conf not found or empty - backup not configured"
+          echo "❌ rclone.conf not found or empty - backup not configured"
           exit 1
         fi
 
-        # Check if BACKUP_REMOTE is set and exists in config
+        # CRITICAL: Fail if BACKUP_REMOTE not set
         if [ -z "$BACKUP_REMOTE" ]; then
-          echo "BACKUP_REMOTE not set"
+          echo "❌ BACKUP_REMOTE not set"
           exit 1
         fi
 
-        # Verify remote exists in rclone config
+        # CRITICAL: Verify remote exists in rclone config
         if ! rclone listremotes --config /home/backup/.config/rclone/rclone.conf | grep -q "^$BACKUP_REMOTE$"; then
-          echo "Backup remote $BACKUP_REMOTE not found in rclone.conf"
+          echo "❌ Backup remote $BACKUP_REMOTE not found in rclone.conf"
           exit 1
         fi
 
@@ -358,9 +358,9 @@ services:
     healthcheck:
       test: |
         CMD-SHELL '
-        # Verify monitoring configuration
+        # CRITICAL: Verify monitoring configuration
         if [ -z "$ALERT_EMAIL" ] && [ -z "$WEBHOOK_URL" ]; then
-          echo "No alert destinations configured"
+          echo "❌ No alert destinations configured - monitoring disabled"
           exit 1
         fi
 
@@ -373,10 +373,17 @@ services:
       start_period: 60s
     environment:
       - TZ=${TZ:-UTC}
+      # INTEGRATED MONITORING THRESHOLDS (from unused config files)
       - DISK_ALERT_THRESHOLD=${DISK_ALERT_THRESHOLD:-85}
       - CPU_ALERT_THRESHOLD=${CPU_ALERT_THRESHOLD:-80}
       - MEMORY_ALERT_THRESHOLD=${MEMORY_ALERT_THRESHOLD:-85}
       - LOAD_ALERT_THRESHOLD=${LOAD_ALERT_THRESHOLD:-2.0}
+      # SQLite-specific monitoring (from config/sqlite-thresholds.conf)
+      - SQLITE_SIZE_ALERT_MB=${SQLITE_SIZE_ALERT_MB:-100}
+      - WAL_SIZE_ALERT_MB=${WAL_SIZE_ALERT_MB:-10}
+      - FRAGMENTATION_ALERT_RATIO=${FRAGMENTATION_ALERT_RATIO:-1.5}
+      - FREELIST_ALERT_THRESHOLD=${FREELIST_ALERT_THRESHOLD:-15}
+      # Alert configuration
       - ALERT_EMAIL=${ALERT_EMAIL:-}
       - WEBHOOK_URL=${WEBHOOK_URL:-}
       - SMTP_HOST=${SMTP_HOST:-}
@@ -384,6 +391,8 @@ services:
       - SMTP_USERNAME=${SMTP_USERNAME:-}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - SMTP_FROM=${SMTP_FROM:-}
+      # Log management
+      - LOG_RETENTION_DAYS=${LOG_RETENTION_DAYS:-30}
     deploy:
       resources:
         limits:
@@ -395,9 +404,9 @@ services:
     command: |
       sh -c '
         # Install required packages
-        apk add --no-cache bash curl jq bc sysstat docker-cli &&
+        apk add --no-cache bash curl jq bc sysstat docker-cli sqlite &&
 
-        # Create monitoring crontab
+        # Create monitoring crontab with integrated thresholds
         echo "*/5 * * * * /app/monitor.sh --check >/dev/null 2>&1" > /tmp/monitoring.cron &&
         echo "0 * * * * /app/alerts.sh --hourly >/dev/null 2>&1" >> /tmp/monitoring.cron &&
         echo "*/15 * * * * /app/perf-monitor.sh --collect >/dev/null 2>&1" >> /tmp/monitoring.cron &&
@@ -442,6 +451,8 @@ networks:
 # ✓ Backup service validates rclone configuration
 # ✓ DDClient validates required variables
 # ✓ Clear error messages for missing configuration
+# ✓ INTEGRATED monitoring thresholds (no more disconnected variables)
+# ✓ FAIL-FAST healthchecks (no silent failures)
 #
 # Profile Usage Examples:
 # docker compose up -d                           # Core services only
