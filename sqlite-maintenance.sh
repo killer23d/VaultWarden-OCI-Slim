@@ -22,8 +22,8 @@ sqlite_maintenance_init() {
         source "${ROOT_DIR}/settings.env"
     fi
 
-    # Set defaults
-    export SQLITE_DB_PATH="${SQLITE_DB_PATH:-${ROOT_DIR}/data/bw/data/bwdata/db.sqlite3}"
+    # ✅ FIXED: Corrected SQLite database path (removed extra /bw/data/)
+    export SQLITE_DB_PATH="${SQLITE_DB_PATH:-${ROOT_DIR}/data/bwdata/db.sqlite3}"
     export LOG_DIR="${LOG_DIR:-${ROOT_DIR}/data/backup_logs}"
     export LOG_FILE="$LOG_DIR/sqlite-maintenance-$(date +%Y%m%d_%H%M%S).log"
 
