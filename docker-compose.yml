@@ -266,9 +266,11 @@ services:
       - BACKUP_PATH=${BACKUP_PATH:-vaultwarden-backups}
       - BACKUP_EMAIL=${BACKUP_EMAIL:-}
       - DATABASE_TYPE=sqlite
-      # Standardized paths - consistent with settings.env
+      # FIXED: Standardized paths - consistent with settings.env
       - SQLITE_DB_PATH=/data/bwdata/db.sqlite3
+      - SQLITE_DB_CONTAINER_PATH=/data/bwdata/db.sqlite3
       - VAULTWARDEN_DATA_DIR=/data/bwdata
+      - VAULTWARDEN_DATA_CONTAINER_DIR=/data/bwdata
       # Additional backup configuration
       - BACKUP_SCHEDULE=${BACKUP_SCHEDULE:-0 2 * * *}
       - BACKUP_COMPRESS=${BACKUP_COMPRESS:-true}
@@ -381,12 +383,16 @@ services:
       - MEMORY_WARNING_THRESHOLD=${MEMORY_WARNING_THRESHOLD:-75}
       - MEMORY_ALERT_THRESHOLD=${MEMORY_ALERT_THRESHOLD:-85}
       - MEMORY_CRITICAL_THRESHOLD=${MEMORY_CRITICAL_THRESHOLD:-85}
+      # FIXED: Added missing mem_usage_pct mapping
+      - MEMORY_USAGE_PCT=${MEMORY_ALERT_THRESHOLD:-85}
       - LOAD_WARNING_THRESHOLD=${LOAD_WARNING_THRESHOLD:-1.0}
       - LOAD_ALERT_THRESHOLD=${LOAD_ALERT_THRESHOLD:-1.5}
       - LOAD_CRITICAL_THRESHOLD=${LOAD_CRITICAL_THRESHOLD:-2.0}
       - DISK_WARNING_THRESHOLD=${DISK_WARNING_THRESHOLD:-75}
       - DISK_ALERT_THRESHOLD=${DISK_ALERT_THRESHOLD:-85}
       - DISK_CRITICAL_THRESHOLD=${DISK_CRITICAL_THRESHOLD:-85}
+      # FIXED: Added missing disk_usage_pct mapping
+      - DISK_USAGE_PCT=${DISK_ALERT_THRESHOLD:-85}
       # SQLite-specific monitoring (unified variable names)
       - SQLITE_SIZE_WARNING_MB=${SQLITE_SIZE_WARNING_MB:-75}
       - SQLITE_SIZE_ALERT_MB=${SQLITE_SIZE_ALERT_MB:-100}
@@ -414,11 +420,11 @@ services:
       - SMTP_USERNAME=${SMTP_USERNAME:-}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - SMTP_FROM=${SMTP_FROM:-}
-      # Unified path configuration
-      - SQLITE_DB_PATH=${SQLITE_DB_PATH:-/data/bwdata/db.sqlite3}
-      - SQLITE_DB_CONTAINER_PATH=${SQLITE_DB_CONTAINER_PATH:-/data/bwdata/db.sqlite3}
-      - VAULTWARDEN_DATA_DIR=${VAULTWARDEN_DATA_DIR:-/data/bwdata}
-      - VAULTWARDEN_DATA_CONTAINER_DIR=${VAULTWARDEN_DATA_CONTAINER_DIR:-/data/bwdata}
+      # FIXED: Unified path configuration - container paths aligned
+      - SQLITE_DB_PATH=/data/bwdata/db.sqlite3
+      - SQLITE_DB_CONTAINER_PATH=/data/bwdata/db.sqlite3
+      - VAULTWARDEN_DATA_DIR=/data/bwdata
+      - VAULTWARDEN_DATA_CONTAINER_DIR=/data/bwdata
       # Log management
       - LOG_RETENTION_DAYS=${LOG_RETENTION_DAYS:-30}
       - MAX_LOG_ENTRIES=${MAX_LOG_ENTRIES:-50}
