@@ -6,16 +6,16 @@
 set -euo pipefail
 IFS=$'\n\t'
 
+# BEST PRACTICE: Define script directory at the top
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+
 export DEBUG="${DEBUG:-false}"
 export LOG_FILE="/tmp/vaultwarden_startup_$(date +%Y%m%d_%H%M%S).log"
 
-# ================================
-# BEST PRACTICE: STRICT ENVIRONMENT VALIDATION (FAIL FAST)
-# ================================
-
+# ================================\n# BEST PRACTICE: STRICT ENVIRONMENT VALIDATION (FAIL FAST)
+# ================================\n
 validate_environment() {
-    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
-    local lib_dir="$script_dir/lib"
+    local lib_dir="$SCRIPT_DIR/lib"
 
     # BEST PRACTICE: Fail fast on missing dependencies
     if [[ ! -d "$lib_dir" ]]; then
@@ -45,32 +45,28 @@ validate_environment() {
 
 # Load libraries without fallbacks (BEST PRACTICE: FAIL FAST, NO MASKING)
 load_libraries() {
-    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
-
     # FAIL FAST: No fallbacks, require proper installation
-    source "$script_dir/lib/common.sh" || {
+    source "$SCRIPT_DIR/lib/common.sh" || {
         echo "❌ FATAL: Required library lib/common.sh not found" >&2
         echo "🔧 Solution: Run 'tools/init-setup.sh' or restore missing files" >&2
         exit 1
     }
 
-    source "$script_dir/lib/config.sh" || {
+    source "$SCRIPT_DIR/lib/config.sh" || {
         echo "❌ FATAL: Required library lib/config.sh not found" >&2
         echo "🔧 Solution: Run 'tools/init-setup.sh' or restore missing files" >&2
         exit 1
     }
 
-    source "$script_dir/lib/docker.sh" || {
+    source "$SCRIPT_DIR/lib/docker.sh" || {
         echo "❌ FATAL: Required library lib/docker.sh not found" >&2
         echo "🔧 Solution: Run 'tools/init-setup.sh' or restore missing files" >&2
         exit 1
     }
 }
 
-# ================================
-# CONFIGURATION VALIDATION FUNCTIONS
-# ================================
-
+# ================================\n# CONFIGURATION VALIDATION FUNCTIONS
+# ================================\n
 # BEST PRACTICE: Validate core configuration requirements
 validate_core_configuration() {
     log_info "Validating core configuration requirements..."
@@ -122,7 +118,7 @@ validate_backup_configuration() {
 
     log_info "Validating backup configuration..."
 
-    local rclone_config="./backup/config/rclone.conf"
+    local rclone_config="$SCRIPT_DIR/backup/config/rclone.conf"
     local backup_remote="${BACKUP_REMOTE:-}"
     local backup_passphrase="${BACKUP_PASSPHRASE:-}"
     local errors=()
@@ -143,10 +139,10 @@ validate_backup_configuration() {
         errors+=("   Configure with: docker compose run --rm bw_backup rclone config")
     elif [[ -n "$backup_remote" ]]; then
         # CRITICAL: Check if specified remote exists in config
-        if ! grep -q "^\[$backup_remote\]" "$rclone_config"; then
+        if ! grep -q "^\\[$backup_remote\\]" "$rclone_config"; then
             errors+=("❌ Backup remote '$backup_remote' not found in rclone.conf")
             local available_remotes
-            available_remotes=$(grep "^\[" "$rclone_config" | tr -d '[]' || echo "none")
+            available_remotes=$(grep "^\\[" "$rclone_config" | tr -d '[]' || echo "none")
             errors+=("   Available remotes: $available_remotes")
         fi
     fi
@@ -234,36 +230,29 @@ validate_monitoring_configuration() {
     return 0
 }
 
-# ================================
-# DIRECTORY STRUCTURE CREATION
-# ================================
-
+# ================================\n# DIRECTORY STRUCTURE CREATION
+# ================================\n
 create_directory_structure() {
     log_info "Creating directory structure..."
 
     # Core data directories
     local directories=(
-        "$VAULTWARDEN_DATA_DIR"     # VaultWarden data (SQLite database)
-        "./data/caddy_data"         # Caddy data storage
-        "./data/caddy_config"       # Caddy configuration
-        "./data/caddy_logs"         # Caddy access logs
-        "./data/backups"            # Local backup storage
-        "./data/backup_logs"        # Backup operation logs
-        "./data/fail2ban"           # Fail2ban configuration data
-
-        # Configuration directories
-        "./backup/config"           # rclone configuration
-        "./backup/templates"        # Backup templates
-        "./fail2ban/jail.d"         # Fail2ban jail configurations
-        "./fail2ban/filter.d"       # Fail2ban filter configurations
-        "./fail2ban/action.d"       # Fail2ban action configurations
-        "./ddclient"                # DDClient configuration
-        "./caddy"                   # Caddy configuration files
-
-        # Log directories
-        "./logs"                    # General log directory
-        "./logs/startup"            # Startup script logs
-        "./logs/maintenance"        # Maintenance script logs
+        "$SCRIPT_DIR/data/bwdata"
+        "$SCRIPT_DIR/data/caddy_data"
+        "$SCRIPT_DIR/data/caddy_config"
+        "$SCRIPT_DIR/data/caddy_logs"
+        "$SCRIPT_DIR/data/backups"
+        "$SCRIPT_DIR/data/backup_logs"
+        "$SCRIPT_DIR/data/fail2ban"
+        "$SCRIPT_DIR/backup/config"
+        "$SCRIPT_DIR/backup/templates"
+        "$SCRIPT_DIR/fail2ban/jail.d"
+        "$SCRIPT_DIR/fail2ban/filter.d"
+        "$SCRIPT_DIR/fail2ban/action.d"
+        "$SCRIPT_DIR/ddclient"
+        "$SCRIPT_DIR/caddy"
+        "$SCRIPT_DIR/logs/startup"
+        "$SCRIPT_DIR/logs/maintenance"
     )
 
     for dir in "${directories[@]}"; do
@@ -273,14 +262,14 @@ create_directory_structure() {
 
             # Set appropriate permissions
             case "$dir" in
-                *"/config"*|*"backup"*|*"fail2ban"*)
-                    chmod 700 "$dir"  # Secure permissions for config dirs
+                *"/config"*|*"/backup"*|*"/fail2ban"*)
+                    chmod 700 "$dir"
                     ;;
                 *"/logs"*|*"/data"*)
-                    chmod 755 "$dir"  # Standard permissions for data/log dirs
+                    chmod 755 "$dir"
                     ;;
                 *)
-                    chmod 755 "$dir"  # Default permissions
+                    chmod 755 "$dir"
                     ;;
             esac
         fi
@@ -289,7 +278,7 @@ create_directory_structure() {
     # Fix ownership for data directories (if running as non-root)
     if [[ -n "${PUID:-}" ]] && [[ -n "${PGID:-}" ]] && [[ "$EUID" -eq 0 ]]; then
         log_info "Setting ownership for data directories..."
-        chown -R "${PUID}:${PGID}" ./data/ || log_warning "Failed to set ownership (may be normal)"
+        chown -R "${PUID}:${PGID}" "$SCRIPT_DIR/data/" || log_warning "Failed to set ownership (may be normal)"
     fi
 
     log_success "Directory structure created successfully"
