@@ -468,14 +468,16 @@ networks:
 # Optimized for 1 OCPU/6GB OCI A1 Flex with UNIFIED MONITORING
 # ==============================================
 # 
-# Resource Allocation Summary:
+# Resource Allocation Summary (Limits):
 # - VaultWarden: 0.35 CPU, 256MB RAM
-# - Caddy:       0.12 CPU, 128MB RAM  
+# - Caddy:       0.12 CPU, 128MB RAM
 # - Fail2ban:    0.08 CPU, 64MB RAM
 # - Backup:      0.30 CPU, 128MB RAM
 # - Watchtower:  0.10 CPU, 64MB RAM
 # - DDClient:    0.05 CPU, 32MB RAM
-# Total:         1.00 CPU, 672MB RAM
+# - Monitoring:  0.05 CPU, 32MB RAM
+# ----------------------------------------------
+# Total Limits:  1.05 CPU, 704MB RAM
 #
 # UNIFIED MONITORING CONFIGURATION:
 # ✓ Single source of truth for all monitoring thresholds
