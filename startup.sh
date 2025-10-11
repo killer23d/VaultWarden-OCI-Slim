@@ -9,12 +9,6 @@ IFS=$'\n\t'
 export DEBUG="${DEBUG:-false}"
 export LOG_FILE="/tmp/vaultwarden_startup_$(date +%Y%m%d_%H%M%S).log"
 
-# Standardized paths - consistent throughout all scripts
-readonly SQLITE_DB_PATH="./data/bwdata/db.sqlite3"
-readonly SQLITE_DB_CONTAINER_PATH="/data/bwdata/db.sqlite3"
-readonly VAULTWARDEN_DATA_DIR="./data/bwdata"
-readonly VAULTWARDEN_DATA_CONTAINER_DIR="/data/bwdata"
-
 # ================================
 # BEST PRACTICE: STRICT ENVIRONMENT VALIDATION (FAIL FAST)
 # ================================
