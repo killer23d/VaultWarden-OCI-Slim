@@ -59,7 +59,7 @@ USER backup
 ENV BACKUP_DIR=/backups \
     LOG_DIR=/var/log/backup \
     DATABASE_TYPE=sqlite \
-    SQLITE_DB_PATH=/data/bw/data/bwdata/db.sqlite3 \
+    SQLITE_DB_PATH=/data/bwdata/db.sqlite3 \
     VAULTWARDEN_DATA_DIR=/data/bwdata
 
 # Expose backup directory as volume
