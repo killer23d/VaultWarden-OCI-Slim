@@ -497,8 +497,8 @@ main_monitoring_loop() {
         timestamp=$(date '+%Y-%m-%d %H:%M:%S')
         eval "$system_metrics_cmd"
         printf '%s,%.2f,%.2f,%.2f,%.2f\n' \
-            "$timestamp" "${metrics[cpu_usage]}" "${metrics[mem_usage_pct]}" \
-            "${metrics[disk_usage_pct]}" "${metrics[load_1m]}" >> "$METRICS_LOG"
+            "$timestamp" "${cpu_usage}" "${mem_usage_pct}" \
+            "${disk_usage_pct}" "${load_1m}" >> "$METRICS_LOG"
 
         # Clean up old log entries using unified settings
         if [[ -f "$METRICS_LOG" ]]; then
@@ -619,9 +619,9 @@ case "$COMMAND" in
         eval "$system_metrics_cmd"
         eval "$sqlite_metrics_cmd"
 
-        printf "System: CPU=%.1f%% MEM=%.1f%% DISK=%.1f%% LOAD=%.2f\n" \
-            "${metrics[cpu_usage]}" "${metrics[mem_usage_pct]}" \
-            "${metrics[disk_usage_pct]}" "${metrics[load_1m]}"
+         printf "System: CPU=%.1f%% MEM=%.1f%% DISK=%.1f%% LOAD=%.2f\n" \
+            "${cpu_usage}" "${mem_usage_pct}" \
+            "${disk_usage_pct}" "${load_1m}"
 
         if [[ "${sqlite_metrics[db_exists]}" == "true" ]]; then
             local db_mb
@@ -652,13 +652,13 @@ case "$COMMAND" in
         printf '  "timestamp": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         printf '  "config_version": "%s",\n' "$MONITORING_CONFIG_VERSION"
         printf '  "system": {\n'
-        printf '    "cpu_usage": %.2f,\n' "${metrics[cpu_usage]}"
-        printf '    "cpu_status": "%s",\n' "$(evaluate_cpu_threshold "${metrics[cpu_usage]}")"
-        printf '    "memory_usage": %.2f,\n' "${metrics[mem_usage_pct]}"
-        printf '    "memory_status": "%s",\n' "$(evaluate_memory_threshold "${metrics[mem_usage_pct]}")"
-        printf '    "disk_usage": %.2f,\n' "${metrics[disk_usage_pct]}"
-        printf '    "load_1min": %.2f,\n' "${metrics[load_1m]}"
-        printf '    "load_status": "%s"\n' "$(evaluate_load_threshold "${metrics[load_1m]}")"
+        printf '   "cpu_usage": %.2f,\n' "${cpu_usage}"
+        printf '    "cpu_status": "%s",\n' "$(evaluate_cpu_threshold "${cpu_usage}")"
+        printf '    "memory_usage": %.2f,\n' "${mem_usage_pct}"
+        printf '    "memory_status": "%s",\n' "$(evaluate_memory_threshold "${mem_usage_pct}")"
+        printf '    "disk_usage": %.2f,\n' "${disk_usage_pct}"
+        printf '    "load_1min": %.2f,\n' "${load_1m}"
+        printf '    "load_status": "%s"\n' "$(evaluate_load_threshold "${load_1m}")"
         printf '  },\n'
         printf '  "sqlite": {\n'
         printf '    "exists": %s,\n' "${sqlite_metrics[db_exists]}"
