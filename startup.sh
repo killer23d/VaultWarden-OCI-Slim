@@ -77,7 +77,7 @@ validate_core_configuration() {
 
     local errors=()
 
-    # Required core variables - CORRECTED for domain consolidation
+    # Required core variables - UNIFIED DOMAIN CONFIGURATION
     local required_vars=(
         "VAULTWARDEN_DOMAIN:Domain configuration"
         "ADMIN_TOKEN:VaultWarden admin token"
@@ -716,7 +716,7 @@ Profile Information:
 Best Practices Implemented:
     ✓ FAIL-FAST dependency validation (NO FALLBACKS)
     ✓ CRITICAL pre-flight validation before service start
-    ✓ Single source of truth for variables
+    ✓ Single source of truth for variables (VAULTWARDEN_DOMAIN)
     ✓ Clear error messages with remediation steps
     ✓ Service disabling for invalid config (prevents silent failures)
 
