@@ -4,15 +4,17 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+# FIX: Correct path to parent directory's lib folder
+LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
 
-# Load core modules (order matters)
-source "$SCRIPT_DIR/lib/common.sh"
-source "$SCRIPT_DIR/lib/dashboard-config.sh"
-source "$SCRIPT_DIR/lib/dashboard-ui.sh"
-source "$SCRIPT_DIR/lib/dashboard-metrics.sh"
-source "$SCRIPT_DIR/lib/dashboard-sqlite.sh"
-source "$SCRIPT_DIR/lib/dashboard-core.sh"
-source "$SCRIPT_DIR/lib/dashboard-maintenance.sh"
+# Load core modules (order matters) - FIXED PATHS
+source "$LIB_DIR/common.sh"
+source "$LIB_DIR/dashboard-config.sh"
+source "$LIB_DIR/dashboard-ui.sh"  
+source "$LIB_DIR/dashboard-metrics.sh"
+source "$LIB_DIR/dashboard-sqlite.sh"
+source "$LIB_DIR/dashboard-core.sh"
+source "$LIB_DIR/dashboard-maintenance.sh"
 
 # Initialize dashboard configuration
 dashboard_config_init
